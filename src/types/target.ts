@@ -16,7 +16,7 @@ export interface ShotPoint {
   isManuallyAdjusted?: boolean;
 }
 
-export type TargetMode = '10shots' | '20shots' | 'free' | 'blank';
+export type TargetMode = '10shots' | '15shots' | '20shots' | '30shots' | 'free' | 'blank';
 
 export interface TargetCalibration {
   centerX: number;         // 표적지 내 흑점 또는 탄착 중심 X 픽셀

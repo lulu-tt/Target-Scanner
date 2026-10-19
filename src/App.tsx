@@ -33,7 +33,9 @@ export const App: React.FC = () => {
 
   const targetShotCount = useMemo(() => {
     if (targetMode === '10shots') return 10;
+    if (targetMode === '15shots') return 15;
     if (targetMode === '20shots') return 20;
+    if (targetMode === '30shots') return 30;
     if (targetMode === 'blank') return 20;
     return 0; // free (자유)
   }, [targetMode]);

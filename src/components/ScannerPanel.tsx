@@ -86,6 +86,7 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
           </span>
           <span className="text-[11px] text-slate-400 font-medium">선택 후 사진 촬영/업로드</span>
         </div>
+        {/* 메인 정규 발수: 10발, 15발, 20발, 30발 */}
         <div className="grid grid-cols-4 gap-1.5 bg-slate-100 dark:bg-slate-800/90 p-1 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
           <button
             type="button"
@@ -100,6 +101,17 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
           </button>
           <button
             type="button"
+            onClick={() => onModeChange('15shots')}
+            className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
+              targetMode === '15shots'
+                ? 'bg-red-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            🔥 15발
+          </button>
+          <button
+            type="button"
             onClick={() => onModeChange('20shots')}
             className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
               targetMode === '20shots'
@@ -107,29 +119,44 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            🔥 20발
+            ⚡ 20발
+          </button>
+          <button
+            type="button"
+            onClick={() => onModeChange('30shots')}
+            className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
+              targetMode === '30shots'
+                ? 'bg-red-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            🏆 30발
+          </button>
+        </div>
+
+        {/* 보조 모드: 백지 사격 / 자유 발수 */}
+        <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+          <button
+            type="button"
+            onClick={() => onModeChange('blank')}
+            className={`py-2 px-2 rounded-xl text-xs font-bold transition-all text-center border ${
+              targetMode === 'blank'
+                ? 'bg-slate-900 text-white dark:bg-red-500 dark:border-red-400 shadow-sm'
+                : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100'
+            }`}
+          >
+            📄 백지 사격 (집탄 전용)
           </button>
           <button
             type="button"
             onClick={() => onModeChange('free')}
-            className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
+            className={`py-2 px-2 rounded-xl text-xs font-bold transition-all text-center border ${
               targetMode === 'free'
-                ? 'bg-red-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-slate-900 text-white dark:bg-red-500 dark:border-red-400 shadow-sm'
+                : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100'
             }`}
           >
-            ♾️ 자유
-          </button>
-          <button
-            type="button"
-            onClick={() => onModeChange('blank')}
-            className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
-              targetMode === 'blank'
-                ? 'bg-red-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            📄 백지
+            ♾️ 자유 발수 (무제한)
           </button>
         </div>
       </div>
