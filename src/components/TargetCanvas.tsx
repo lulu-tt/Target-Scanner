@@ -1,14 +1,14 @@
 /**
- * [인터랙티브 2중 미세조정 표적 캔버스 컴포넌트]
- * 작성자: 코다리 개발부장
- * 의도: AI가 1차 감지한 탄착점을 사용자가 직접 눈으로 확인하고,
- *       마우스/터치 드래그로 0.1mm 단위 미세조정 및 클릭 추가/삭제를 수행할 수 있는 핵심 UX 캔버스입니다.
+ * [영자 실장의 모던 인터랙티브 표적 캔버스 컴포넌트]
+ * 작성자: 디자인 실장 영자 & 코다리 부장
+ * 의도: 모바일 엄지손가락에 맞춘 대형 플로팅 툴바(42px 이상)와
+ *       3.5배 돋보기 루페 및 부드러운 터치 인터랙션을 제공합니다.
  */
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { TargetCalibration, ShotPoint } from '../types/target';
 import { ISSF_AIR_RIFLE, calculateShotScore } from '../utils/issfSpecs';
-import { ZoomIn, ZoomOut, RotateCcw, Eye, EyeOff, Crosshair, Trash2, PlusCircle, Sparkles } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Eye, EyeOff, Crosshair, Trash2, Sparkles, Layers } from 'lucide-react';
 
 interface TargetCanvasProps {
   imageUrl: string;
@@ -76,19 +76,25 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
       ctx.save();
       // 10점 중앙 점
       ctx.beginPath();
-      ctx.arc(calibration.centerX, calibration.centerY, (ISSF_AIR_RIFLE.RING_10_DIAMETER_MM / 2) * calibration.pxPerMm, 0, Math.PI * 2);
+      ctx.arc(
+        calibration.centerX,
+        calibration.centerY,
+        (ISSF_AIR_RIFLE.RING_10_DIAMETER_MM / 2) * calibration.pxPerMm,
+        0,
+        Math.PI * 2
+      );
       ctx.fillStyle = '#FFD700';
       ctx.fill();
 
       // 9점 ~ 1점 링
       for (let r = 9; r >= 1; r--) {
         const ringDiameterMm = 0.5 + (10 - r) * 5.0;
-        const radiusPx = (ringDiameterMm / 2) * calibration.pxPerMm;
+        const radiusPx = (ringDiameterMm / 2.0) * calibration.pxPerMm;
 
         ctx.beginPath();
         ctx.arc(calibration.centerX, calibration.centerY, radiusPx, 0, Math.PI * 2);
-        ctx.strokeStyle = r >= 4 ? 'rgba(255, 255, 255, 0.35)' : 'rgba(50, 50, 50, 0.4)';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = r >= 4 ? 'rgba(255, 255, 255, 0.45)' : 'rgba(50, 50, 50, 0.4)';
+        ctx.lineWidth = 1.2;
         ctx.stroke();
       }
       ctx.restore();
@@ -100,25 +106,26 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
       const mpiPxY = calibration.centerY + mpi.y_mm * calibration.pxPerMm;
 
       ctx.save();
-      ctx.strokeStyle = '#00F0FF';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = '#00E5FF';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([5, 4]);
 
       // MPI 크로스헤어
       ctx.beginPath();
-      ctx.moveTo(mpiPxX - 18, mpiPxY);
-      ctx.lineTo(mpiPxX + 18, mpiPxY);
-      ctx.moveTo(mpiPxX, mpiPxY - 18);
-      ctx.lineTo(mpiPxX, mpiPxY + 18);
+      ctx.moveTo(mpiPxX - 22, mpiPxY);
+      ctx.lineTo(mpiPxX + 22, mpiPxY);
+      ctx.moveTo(mpiPxX, mpiPxY - 22);
+      ctx.lineTo(mpiPxX, mpiPxY + 22);
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.arc(mpiPxX, mpiPxY, 8, 0, Math.PI * 2);
+      ctx.arc(mpiPxX, mpiPxY, 10, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.fillStyle = '#00F0FF';
-      ctx.font = 'bold 11px sans-serif';
-      ctx.fillText('MPI', mpiPxX + 10, mpiPxY - 8);
+      // MPI 뱃지
+      ctx.fillStyle = '#00E5FF';
+      ctx.font = 'black 12px sans-serif';
+      ctx.fillText('MPI', mpiPxX + 12, mpiPxY - 10);
       ctx.restore();
     }
 
@@ -136,36 +143,39 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
       // 4.5mm 납탄 구멍 외곽 테두리 (실제 탄착 범위)
       ctx.beginPath();
       ctx.arc(currentX, currentY, pelletPxRadius, 0, Math.PI * 2);
-      ctx.fillStyle = isSelected ? 'rgba(255, 51, 75, 0.35)' : 'rgba(255, 215, 0, 0.2)';
+      ctx.fillStyle = isSelected ? 'rgba(239, 68, 68, 0.4)' : 'rgba(250, 204, 21, 0.25)';
       ctx.fill();
-      ctx.strokeStyle = isSelected ? '#FF334B' : shot.score >= 10.0 ? '#FFD700' : '#00E5FF';
-      ctx.lineWidth = isSelected ? 3 : 2;
+      ctx.strokeStyle = isSelected ? '#EF4444' : shot.score >= 10.0 ? '#EAB308' : '#06B6D4';
+      ctx.lineWidth = isSelected ? 3.5 : 2.2;
       ctx.stroke();
 
       // 중심 십자선 포인트
       ctx.beginPath();
-      ctx.arc(currentX, currentY, 3, 0, Math.PI * 2);
+      ctx.arc(currentX, currentY, 3.5, 0, Math.PI * 2);
       ctx.fillStyle = '#FFFFFF';
       ctx.fill();
 
-      // 탄환 번호 및 소수점 점수 뱃지
-      ctx.fillStyle = isSelected ? '#FF334B' : '#1A2128';
+      // 탄환 번호 및 소수점 점수 뱃지 (시인성 강화)
+      ctx.fillStyle = isSelected ? '#EF4444' : '#0F172A';
       const labelText = `#${shot.shotNumber} (${shot.score.toFixed(1)})`;
-      ctx.font = 'bold 12px sans-serif';
+      ctx.font = 'bold 13px sans-serif';
       const textWidth = ctx.measureText(labelText).width;
 
-      const badgeX = currentX - textWidth / 2 - 6;
-      const badgeY = currentY - pelletPxRadius - 22;
+      const badgeX = currentX - textWidth / 2 - 8;
+      const badgeY = currentY - pelletPxRadius - 26;
 
-      ctx.fillRect(badgeX, badgeY, textWidth + 12, 18);
-      ctx.strokeStyle = isSelected ? '#FFFFFF' : 'rgba(255,255,255,0.2)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(badgeX, badgeY, textWidth + 12, 18);
+      ctx.beginPath();
+      ctx.roundRect(badgeX, badgeY, textWidth + 16, 22, 6);
+      ctx.fill();
+
+      ctx.strokeStyle = isSelected ? '#FFFFFF' : 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
 
       ctx.fillStyle = '#FFFFFF';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(labelText, currentX, badgeY + 9);
+      ctx.fillText(labelText, currentX, badgeY + 11);
 
       ctx.restore();
     });
@@ -184,17 +194,15 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
     if (!mCtx) return;
 
     const magSize = magCanvas.width;
-    const magZoom = 3.5; // 3.5배 확대
+    const magZoom = 3.5;
 
     mCtx.clearRect(0, 0, magSize, magSize);
 
-    // 원형 클리핑
     mCtx.save();
     mCtx.beginPath();
     mCtx.arc(magSize / 2, magSize / 2, magSize / 2 - 2, 0, Math.PI * 2);
     mCtx.clip();
 
-    // 메인 캔버스의 해당 좌표 영역을 확대 렌더링
     const sourceW = magSize / magZoom;
     const sourceH = magSize / magZoom;
     const sourceX = canvasX - sourceW / 2;
@@ -202,9 +210,9 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
 
     mCtx.drawImage(mainCanvas, sourceX, sourceY, sourceW, sourceH, 0, 0, magSize, magSize);
 
-    // 초정밀 크로스헤어 십자선
-    mCtx.strokeStyle = 'rgba(255, 51, 75, 0.85)';
-    mCtx.lineWidth = 1.5;
+    // 정밀 십자선
+    mCtx.strokeStyle = '#EF4444';
+    mCtx.lineWidth = 2;
     mCtx.beginPath();
     mCtx.moveTo(0, magSize / 2);
     mCtx.lineTo(magSize, magSize / 2);
@@ -212,9 +220,8 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
     mCtx.lineTo(magSize / 2, magSize);
     mCtx.stroke();
 
-    // 중심 원
     mCtx.beginPath();
-    mCtx.arc(magSize / 2, magSize / 2, 4, 0, Math.PI * 2);
+    mCtx.arc(magSize / 2, magSize / 2, 5, 0, Math.PI * 2);
     mCtx.strokeStyle = '#FFFFFF';
     mCtx.lineWidth = 2;
     mCtx.stroke();
@@ -288,7 +295,6 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
   // 마우스 클릭 & 드래그 시작 핸들러
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button === 1 || e.altKey) {
-      // 휠 클릭 or Alt 키: 팬 모드
       setIsPanning(true);
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
       return;
@@ -297,8 +303,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
     const { x, y } = getCanvasCoords(e);
     const pelletPxRadius = ISSF_AIR_RIFLE.PELLET_RADIUS_MM * calibration.pxPerMm;
 
-    // 클릭한 위치에 기존 탄착점이 있는지 확인
-    const clickedShot = shots.find((s) => Math.hypot(s.pixelX - x, s.pixelY - y) <= pelletPxRadius * 1.5);
+    const clickedShot = shots.find((s) => Math.hypot(s.pixelX - x, s.pixelY - y) <= pelletPxRadius * 1.6);
 
     if (clickedShot) {
       onSelectShot(clickedShot.id);
@@ -306,7 +311,6 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
       setDragCurrentPos({ x: clickedShot.pixelX, y: clickedShot.pixelY });
       updateMagnifier(clickedShot.pixelX, clickedShot.pixelY);
     } else {
-      // 빈 공간 클릭 시: 새 탄착점 추가 (10발 미만일 때)
       if (shots.length < 10) {
         const newShotNumber = shots.length + 1;
         const scoreData = calculateShotScore(x, y, calibration);
@@ -327,7 +331,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
     }
   };
 
-  // 마우스 이동 핸들러 (드래그 미세조정)
+  // 마우스 이동 핸들러
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (isPanning) {
       setPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
@@ -341,7 +345,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
     }
   };
 
-  // 마우스 드래그 종료 핸들러 (좌표 확정 및 점수 재계산)
+  // 마우스/터치 드래그 종료 핸들러
   const handleMouseUp = () => {
     if (isPanning) {
       setIsPanning(false);
@@ -383,85 +387,89 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
   };
 
   return (
-    <div className="relative flex flex-col items-center select-none bg-slate-950 rounded-2xl border border-slate-800 p-4 shadow-2xl">
-      {/* 캔버스 상단 툴바 */}
-      <div className="w-full flex items-center justify-between mb-3 px-1 text-xs text-slate-300">
+    <div className="relative flex flex-col items-center select-none bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-4 md:p-5 shadow-xl shadow-slate-200/40 dark:shadow-none w-full transition-colors">
+      {/* 1. 상단 모바일 툴바 (터치 영역 42px 보장) */}
+      <div className="w-full flex items-center justify-between mb-3.5 px-0.5">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-slate-100 flex items-center gap-1.5">
-            <Crosshair className="w-4 h-4 text-red-500" />
+          <span className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+            <Crosshair className="w-4 h-4 text-red-500 stroke-[2.5]" />
             표적지 인터랙티브 뷰
           </span>
-          <span className="bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full text-[11px]">
-            {shots.length}/10발 감지됨
+          <span className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold px-2 py-0.5 rounded-full text-xs">
+            {shots.length}/10발
           </span>
         </div>
 
-        <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg p-1">
+        {/* 플로팅 컨트롤 버튼 그룹 */}
+        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/90 p-1 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
           <button
             onClick={() => setZoom((z) => Math.min(z + 0.25, 2.5))}
-            className="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white"
+            className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm active:scale-95 transition"
             title="확대"
           >
-            <ZoomIn className="w-3.5 h-3.5" />
+            <ZoomIn className="w-4 h-4" />
           </button>
           <button
             onClick={() => setZoom((z) => Math.max(z - 0.25, 0.75))}
-            className="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white"
+            className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm active:scale-95 transition"
             title="축소"
           >
-            <ZoomOut className="w-3.5 h-3.5" />
+            <ZoomOut className="w-4 h-4" />
           </button>
           <button
             onClick={() => {
               setZoom(1);
               setPan({ x: 0, y: 0 });
             }}
-            className="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white"
+            className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm active:scale-95 transition"
             title="초기화"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
+            <RotateCcw className="w-4 h-4" />
           </button>
 
-          <div className="w-[1px] h-3 bg-slate-700 mx-1" />
+          <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-600 mx-0.5" />
 
           <button
             onClick={() => setShowRings(!showRings)}
-            className={`p-1 rounded flex items-center gap-1 ${
-              showRings ? 'bg-red-500/20 text-red-400' : 'hover:bg-slate-800 text-slate-400'
+            className={`w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-xl font-bold transition active:scale-95 ${
+              showRings
+                ? 'bg-red-500 text-white shadow-sm'
+                : 'bg-white dark:bg-slate-700 text-slate-400'
             }`}
             title="공식 링 표시 토글"
           >
-            {showRings ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+            {showRings ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
           </button>
 
           <button
             onClick={() => setShowMpi(!showMpi)}
-            className={`p-1 rounded flex items-center gap-1 ${
-              showMpi ? 'bg-cyan-500/20 text-cyan-400' : 'hover:bg-slate-800 text-slate-400'
+            className={`w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-xl font-black text-[11px] transition active:scale-95 ${
+              showMpi
+                ? 'bg-cyan-500 text-white shadow-sm'
+                : 'bg-white dark:bg-slate-700 text-slate-400'
             }`}
             title="MPI 중심 표시 토글"
           >
-            <span className="font-bold text-[10px]">MPI</span>
+            MPI
           </button>
 
           {selectedShotId && (
             <button
               onClick={handleDeleteSelected}
-              className="p-1 bg-red-600/30 hover:bg-red-600/50 text-red-300 rounded ml-1 flex items-center gap-1"
-              title="선택한 탄착점 삭제"
+              className="h-8 md:h-9 px-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm active:scale-95 transition"
+              title="선택 핀 삭제"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span className="text-[10px]">삭제</span>
+              <span>삭제</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* 캔버스 뷰포트 영역 */}
+      {/* 2. 캔버스 뷰포트 영역 (모바일 화면에 맞춰 100% 핏) */}
       <div
         ref={containerRef}
-        className="relative overflow-hidden rounded-xl border border-slate-800 bg-[#E8DFD0] shadow-inner cursor-crosshair touch-none"
-        style={{ width: '100%', maxWidth: '580px', aspectRatio: '1/1' }}
+        className="relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-[#E8DFD0] shadow-inner cursor-crosshair touch-none w-full max-w-[580px] aspect-square"
       >
         <div
           style={{
@@ -488,20 +496,20 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
           />
         </div>
 
-        {/* 실시간 3.5배 돋보기(Magnifier Loupe) 오버레이 */}
+        {/* 손가락에 가려지지 않도록 상단 코너에 뜨는 3.5배 돋보기 */}
         {draggingShotId && (
-          <div className="absolute top-3 right-3 pointer-events-none rounded-full border-2 border-red-500 shadow-2xl overflow-hidden bg-slate-900/90 backdrop-blur">
-            <canvas ref={magnifierRef} width={130} height={130} className="w-[130px] h-[130px]" />
-            <div className="absolute bottom-1 w-full text-center text-[10px] text-white font-bold bg-black/60 py-0.5">
+          <div className="absolute top-3 right-3 pointer-events-none rounded-2xl border-2 border-red-500 shadow-2xl overflow-hidden bg-slate-900/90 backdrop-blur">
+            <canvas ref={magnifierRef} width={136} height={136} className="w-[136px] h-[136px]" />
+            <div className="absolute bottom-1 w-full text-center text-[10px] text-white font-extrabold bg-black/70 py-0.5 tracking-wider">
               3.5x 정밀 조준
             </div>
           </div>
         )}
 
         {/* 캔버스 하단 미세 안내 툴팁 */}
-        <div className="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700/60 rounded-md px-2.5 py-1 text-[11px] text-slate-300 flex items-center gap-1.5 shadow">
-          <Sparkles className="w-3 h-3 text-yellow-400" />
-          <span>핀을 누르고 드래그하여 미세조정 | 빈 곳 클릭 시 핀 추가</span>
+        <div className="absolute bottom-2.5 left-2.5 right-2.5 pointer-events-none bg-slate-900/80 dark:bg-black/80 backdrop-blur-md border border-white/10 rounded-xl px-3 py-1.5 text-[11px] font-medium text-slate-200 flex items-center justify-center gap-1.5 shadow-lg">
+          <Sparkles className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" />
+          <span className="truncate">핀 터치 후 드래그하여 미세조정 | 빈 곳 터치 시 핀 추가</span>
         </div>
       </div>
     </div>
