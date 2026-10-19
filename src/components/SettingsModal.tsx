@@ -59,23 +59,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       setTestStatus('idle');
       setErrorMessage('');
 
-      // 가벼운 Gemini 모델 연결 테스트 호출
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey.trim()}`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: 'ping' }] }],
-          generationConfig: { maxOutputTokens: 2 },
-        }),
-      });
+      // 최신 gemini-3.8-flash 우선 연결 테스트
+      const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
+      let isSuccess = false;
+      let lastErrMsg = '';
 
-      if (response.ok) {
+      for (const model of candidateModels) {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: 'ping' }] }],
+            generationConfig: { maxOutputTokens: 2 },
+          }),
+        });
+
+        if (response.ok) {
+          isSuccess = true;
+          break;
+        } else {
+          const err = await response.json().catch(() => ({}));
+          lastErrMsg = err?.error?.message || `인증 실패 (HTTP ${response.status})`;
+          if (response.status === 404) continue;
+          break;
+        }
+      }
+
+      if (isSuccess) {
         setTestStatus('success');
       } else {
-        const err = await response.json().catch(() => ({}));
         setTestStatus('error');
-        setErrorMessage(err?.error?.message || `인증 실패 (HTTP ${response.status})`);
+        setErrorMessage(lastErrMsg || '연결 실패');
       }
     } catch (e: any) {
       setTestStatus('error');

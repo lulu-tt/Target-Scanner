@@ -142,7 +142,10 @@ CRITICAL INSTRUCTIONS:
      ]
    }`;
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey.trim()}`;
+  // 최신 gemini-3.8-flash 우선 시도 후, 이전 계정 호환을 위한 fallback 모델 체인
+  const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
+  let lastError: Error | null = null;
+  let candidateText: string | null = null;
 
   const requestBody = {
     contents: [
@@ -164,24 +167,36 @@ CRITICAL INSTRUCTIONS:
     },
   };
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(requestBody),
-  });
+  for (const model of candidateModels) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    const message = errorData?.error?.message || `HTTP 에러 ${response.status}: ${response.statusText}`;
-    throw new Error(`Gemini API 호출 실패: ${message}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const message = errorData?.error?.message || `HTTP 에러 ${response.status}: ${response.statusText}`;
+        lastError = new Error(`Gemini (${model}) API 호출 실패: ${message}`);
+        // 404 모델 Not Found인 경우 다음 모델 시도
+        if (response.status === 404) continue;
+        throw lastError;
+      }
+
+      const resultData = await response.json();
+      candidateText = resultData?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (candidateText) break; // 성공 시 루프 탈출
+    } catch (e: any) {
+      lastError = e;
+    }
   }
 
-  const resultData = await response.json();
-  const candidateText = resultData?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!candidateText) {
-    throw new Error('Gemini API로부터 응답 텍스트를 받지 못했습니다.');
+    throw lastError || new Error('Gemini API로부터 응답을 받지 못했습니다.');
   }
 
   let parsed: GeminiTargetResponse;
