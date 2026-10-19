@@ -6,24 +6,21 @@
  */
 
 import React, { useRef } from 'react';
-import { SAMPLE_PRESETS, SamplePreset } from '../utils/targetSamples';
 import { TargetMode } from '../types/target';
-import { Camera, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { Camera, Image as ImageIcon } from 'lucide-react';
 
 interface ScannerPanelProps {
-  onSelectPreset: (preset: SamplePreset) => void;
   onFileUpload: (file: File) => void;
   isLoading: boolean;
-  activePresetId?: string;
   targetMode: TargetMode;
   onModeChange: (mode: TargetMode) => void;
+  onSelectPreset?: (preset: any) => void;
+  activePresetId?: string;
 }
 
 export const ScannerPanel: React.FC<ScannerPanelProps> = ({
-  onSelectPreset,
   onFileUpload,
   isLoading,
-  activePresetId,
   targetMode,
   onModeChange,
 }) => {
@@ -158,38 +155,6 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
           >
             ♾️ 자유 발수 (무제한)
           </button>
-        </div>
-      </div>
-
-      {/* 3. 하단: 빠른 테스트 샘플 (모바일 가로 스크롤 칩) */}
-      <div className="flex flex-col gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
-        <div className="flex items-center justify-between text-xs px-1">
-          <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            빠른 표적지 샘플 체험
-          </span>
-          <span className="text-[11px] text-slate-400 font-medium">터치 시 즉시 로드</span>
-        </div>
-
-        {/* 모바일 최적화 가로 스크롤 칩 바 */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1">
-          {SAMPLE_PRESETS.map((preset) => {
-            const isActive = preset.id === activePresetId;
-            return (
-              <button
-                key={preset.id}
-                onClick={() => onSelectPreset(preset)}
-                disabled={isLoading}
-                className={`flex-shrink-0 h-11 px-4 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 border ${
-                  isActive
-                    ? 'bg-slate-900 text-white border-slate-900 dark:bg-red-500 dark:border-red-400 shadow-md shadow-slate-900/10'
-                    : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800'
-                } disabled:opacity-50`}
-              >
-                <span>{preset.name}</span>
-              </button>
-            );
-          })}
         </div>
       </div>
     </div>

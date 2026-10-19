@@ -233,12 +233,10 @@ export const App: React.FC = () => {
 
       {/* 메인 작업 영역 (모바일 최적화 패딩) */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col gap-5 pb-16">
-        {/* 업로드 & 프리셋 패널 */}
+        {/* 업로드 패널 */}
         <ScannerPanel
-          onSelectPreset={handleSelectPreset}
           onFileUpload={handleFileUpload}
           isLoading={isLoading}
-          activePresetId={activePresetId}
           targetMode={targetMode}
           onModeChange={handleModeChange}
         />
