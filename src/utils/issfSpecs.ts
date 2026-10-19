@@ -56,12 +56,17 @@ export function calculateShotScore(
 /**
  * 사격 세션 종합 통계 및 탄착군(Grouping) 분석
  */
-export function calculateGroupingStats(shots: ShotPoint[]): GroupingStats {
+export function calculateGroupingStats(shots: ShotPoint[], targetCount: number = 10): GroupingStats {
+  const maxPossibleScore = targetCount > 0 
+    ? Math.round(targetCount * 10.9 * 10) / 10 
+    : Math.round(Math.max(shots.length, 1) * 10.9 * 10) / 10;
+
   if (shots.length === 0) {
     return {
       totalShots: 0,
       totalScore: 0,
       averageScore: 0,
+      maxPossibleScore,
       mpiX_mm: 0,
       mpiY_mm: 0,
       extremeSpread_mm: 0,
@@ -103,6 +108,7 @@ export function calculateGroupingStats(shots: ShotPoint[]): GroupingStats {
     totalShots,
     totalScore,
     averageScore,
+    maxPossibleScore,
     mpiX_mm,
     mpiY_mm,
     extremeSpread_mm: Math.round(extremeSpread_mm * 100) / 100,

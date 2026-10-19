@@ -18,6 +18,7 @@ interface TargetCanvasProps {
   onShotsChange: (shots: ShotPoint[]) => void;
   onSelectShot: (id: string | null) => void;
   mpi: { x_mm: number; y_mm: number };
+  targetCount?: number;
 }
 
 export const TargetCanvas: React.FC<TargetCanvasProps> = ({
@@ -28,6 +29,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
   onShotsChange,
   onSelectShot,
   mpi,
+  targetCount = 10,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -264,7 +266,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
       setDraggingShotId(clickedShot.id);
       setDragCurrentPos({ x: clickedShot.pixelX, y: clickedShot.pixelY });
       updateMagnifier(clickedShot.pixelX, clickedShot.pixelY);
-    } else if (shots.length < 10) {
+    } else if (targetCount === 0 || shots.length < targetCount) {
       const newShotNumber = shots.length + 1;
       const scoreData = calculateShotScore(x, y, calibration);
       const newShot: ShotPoint = {
@@ -311,7 +313,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
       setDragCurrentPos({ x: clickedShot.pixelX, y: clickedShot.pixelY });
       updateMagnifier(clickedShot.pixelX, clickedShot.pixelY);
     } else {
-      if (shots.length < 10) {
+      if (targetCount === 0 || shots.length < targetCount) {
         const newShotNumber = shots.length + 1;
         const scoreData = calculateShotScore(x, y, calibration);
         const newShot: ShotPoint = {
@@ -393,7 +395,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
         {/* 좌측: 탄환 수 뱃지 (줄바꿈 방지) */}
         <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/90 text-slate-800 dark:text-slate-200 font-extrabold px-3 py-1.5 rounded-xl text-xs whitespace-nowrap shadow-sm border border-slate-200/60 dark:border-slate-700/60">
           <Crosshair className="w-4 h-4 text-red-500 stroke-[2.5]" />
-          <span>{shots.length} / 10발</span>
+          <span>{shots.length} {targetCount > 0 ? `/ ${targetCount}발` : '발 (자유)'}</span>
         </div>
 
         {/* 플로팅 컨트롤 버튼 그룹 */}

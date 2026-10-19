@@ -60,7 +60,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
               {stats.totalScore.toFixed(1)}
             </span>
             <span className="text-sm font-bold text-slate-400 dark:text-slate-500">
-              / {(stats.totalShots * 10.9).toFixed(1)}
+              / {stats.maxPossibleScore ? stats.maxPossibleScore.toFixed(1) : (stats.totalShots * 10.9).toFixed(1)}
             </span>
           </div>
 

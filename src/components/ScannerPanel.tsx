@@ -7,6 +7,7 @@
 
 import React, { useRef } from 'react';
 import { SAMPLE_PRESETS, SamplePreset } from '../utils/targetSamples';
+import { TargetMode } from '../types/target';
 import { Camera, Image as ImageIcon, Sparkles } from 'lucide-react';
 
 interface ScannerPanelProps {
@@ -14,6 +15,8 @@ interface ScannerPanelProps {
   onFileUpload: (file: File) => void;
   isLoading: boolean;
   activePresetId?: string;
+  targetMode: TargetMode;
+  onModeChange: (mode: TargetMode) => void;
 }
 
 export const ScannerPanel: React.FC<ScannerPanelProps> = ({
@@ -21,6 +24,8 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
   onFileUpload,
   isLoading,
   activePresetId,
+  targetMode,
+  onModeChange,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -73,7 +78,63 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
         </button>
       </div>
 
-      {/* 2. 하단: 빠른 테스트 샘플 (모바일 가로 스크롤 칩) */}
+      {/* 2. 사격 모드 선택 세그먼트 (10발 / 20발 / 자유 / 백지) */}
+      <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+        <div className="flex items-center justify-between text-xs px-1">
+          <span className="font-bold text-slate-700 dark:text-slate-300">
+            사격 목표 발수 / 유형
+          </span>
+          <span className="text-[11px] text-slate-400 font-medium">선택 후 사진 촬영/업로드</span>
+        </div>
+        <div className="grid grid-cols-4 gap-1.5 bg-slate-100 dark:bg-slate-800/90 p-1 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
+          <button
+            type="button"
+            onClick={() => onModeChange('10shots')}
+            className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
+              targetMode === '10shots'
+                ? 'bg-red-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            🎯 10발
+          </button>
+          <button
+            type="button"
+            onClick={() => onModeChange('20shots')}
+            className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
+              targetMode === '20shots'
+                ? 'bg-red-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            🔥 20발
+          </button>
+          <button
+            type="button"
+            onClick={() => onModeChange('free')}
+            className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
+              targetMode === 'free'
+                ? 'bg-red-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            ♾️ 자유
+          </button>
+          <button
+            type="button"
+            onClick={() => onModeChange('blank')}
+            className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
+              targetMode === 'blank'
+                ? 'bg-red-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            📄 백지
+          </button>
+        </div>
+      </div>
+
+      {/* 3. 하단: 빠른 테스트 샘플 (모바일 가로 스크롤 칩) */}
       <div className="flex flex-col gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
         <div className="flex items-center justify-between text-xs px-1">
           <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">

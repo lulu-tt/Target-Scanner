@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { TargetCalibration, ShotPoint, SavedSession } from './types/target';
+import { TargetCalibration, ShotPoint, SavedSession, TargetMode } from './types/target';
 import { SAMPLE_PRESETS, SamplePreset, generateSampleTargetImage } from './utils/targetSamples';
 import { processTargetImage } from './utils/visionProcessor';
 import { calculateGroupingStats } from './utils/issfSpecs';
@@ -27,6 +27,16 @@ export const App: React.FC = () => {
       return 'light';
     }
   });
+
+  // 사격 모드 (10발 / 20발 / 자유 / 백지)
+  const [targetMode, setTargetMode] = useState<TargetMode>('10shots');
+
+  const targetShotCount = useMemo(() => {
+    if (targetMode === '10shots') return 10;
+    if (targetMode === '20shots') return 20;
+    if (targetMode === 'blank') return 20;
+    return 0; // free (자유)
+  }, [targetMode]);
 
   const [imageUrl, setImageUrl] = useState<string>('');
   const [calibration, setCalibration] = useState<TargetCalibration>({
@@ -66,8 +76,8 @@ export const App: React.FC = () => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
   };
 
-  // 집탄 통계 계산
-  const stats = useMemo(() => calculateGroupingStats(shots), [shots]);
+  // 집탄 통계 계산 (목표 발수 동적 반영)
+  const stats = useMemo(() => calculateGroupingStats(shots, targetShotCount), [shots, targetShotCount]);
 
   // 토스트 메시지
   const showToast = (msg: string) => {
@@ -101,13 +111,16 @@ export const App: React.FC = () => {
     try {
       setIsLoading(true);
       setActivePresetId('');
-      const result = await processTargetImage(file);
+      const result = await processTargetImage(file, undefined, {
+        mode: targetMode,
+        targetCount: targetShotCount,
+      });
 
       setImageUrl(result.normalizedImageUrl);
       setCalibration(result.calibration);
       setShots(result.detectedShots);
       setSelectedShotId(null);
-      showToast(`표적지 이미지 분석 완료! (${result.detectedShots.length}발 감지됨)`);
+      showToast(`표적지 분석 완료! (${result.detectedShots.length}발 감지됨)`);
     } catch (err) {
       console.error(err);
       showToast('표적지 이미지 분석에 실패했습니다.');
@@ -128,6 +141,7 @@ export const App: React.FC = () => {
         hour: '2-digit',
         minute: '2-digit',
       }),
+      mode: targetMode,
       shots: [...shots],
       stats: { ...stats },
       targetImage: imageUrl,
@@ -184,6 +198,8 @@ export const App: React.FC = () => {
           onFileUpload={handleFileUpload}
           isLoading={isLoading}
           activePresetId={activePresetId}
+          targetMode={targetMode}
+          onModeChange={setTargetMode}
         />
 
         {/* 로딩 인디케이터 */}
@@ -206,6 +222,7 @@ export const App: React.FC = () => {
                 onShotsChange={setShots}
                 onSelectShot={setSelectedShotId}
                 mpi={{ x_mm: stats.mpiX_mm, y_mm: stats.mpiY_mm }}
+                targetCount={targetShotCount}
               />
             </div>
 
