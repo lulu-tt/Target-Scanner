@@ -390,14 +390,10 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
     <div className="relative flex flex-col items-center select-none bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-4 md:p-5 shadow-xl shadow-slate-200/40 dark:shadow-none w-full transition-colors">
       {/* 1. 상단 모바일 툴바 (터치 영역 42px 보장) */}
       <div className="w-full flex items-center justify-between mb-3.5 px-0.5">
-        <div className="flex items-center gap-2">
-          <span className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
-            <Crosshair className="w-4 h-4 text-red-500 stroke-[2.5]" />
-            표적지 인터랙티브 뷰
-          </span>
-          <span className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold px-2 py-0.5 rounded-full text-xs">
-            {shots.length}/10발
-          </span>
+        {/* 좌측: 탄환 수 뱃지 (줄바꿈 방지) */}
+        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/90 text-slate-800 dark:text-slate-200 font-extrabold px-3 py-1.5 rounded-xl text-xs whitespace-nowrap shadow-sm border border-slate-200/60 dark:border-slate-700/60">
+          <Crosshair className="w-4 h-4 text-red-500 stroke-[2.5]" />
+          <span>{shots.length} / 10발</span>
         </div>
 
         {/* 플로팅 컨트롤 버튼 그룹 */}
