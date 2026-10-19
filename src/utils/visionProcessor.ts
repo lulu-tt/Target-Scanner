@@ -156,15 +156,15 @@ export async function processTargetImage(
         let isHole = false;
 
         // A. 파란색 매트가 비치는 명확한 관통 구멍 (사격장 실제 탄흔)
-        if ((b > r + 11 && b > 55) || (b > r + 8 && b > 70)) {
+        if ((b > r + 10 && b > 50) || (b > r + 7 && b > 65)) {
           isHole = true;
         }
         // B. 흑점 중앙(10~8점 구역) 관통부 (흑점 원본 lum ~ 25 대비 유의미하게 밝은 톤 또는 구멍)
         else if (dist < blackRadiusPx * 0.78 && lum > 58 && Math.abs(r - g) < 22) {
           isHole = true;
         }
-        // C. 흑점 완전 바깥(1점~3점 백지 영역) 관통 구멍
-        else if (dist > blackRadiusPx * 1.15 && dist <= searchRadiusPx && lum < 62) {
+        // C. 흑점 완전 바깥(1점~3점 백지 영역) 관통 구멍 (인쇄된 흑색 숫자 '1','2','3' 오인 방지를 위해 청색 비침 필수)
+        else if (dist > blackRadiusPx * 1.15 && dist <= searchRadiusPx && b > r + 8 && b > 45) {
           isHole = true;
         }
 
