@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  target-scanner:
+    build: .
+    container_name: target-scanner
+    restart: unless-stopped
+    ports:
+      - "8085:80" # NAS 포트 8085로 접속 가능
+    environment:
+      - NODE_ENV=production
