@@ -41,6 +41,7 @@ export const App: React.FC = () => {
   }, [targetMode]);
 
   const [imageUrl, setImageUrl] = useState<string>('');
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [calibration, setCalibration] = useState<TargetCalibration>({
     centerX: 400,
     centerY: 400,
@@ -91,6 +92,7 @@ export const App: React.FC = () => {
   const handleSelectPreset = async (preset: SamplePreset) => {
     try {
       setIsLoading(true);
+      setCurrentFile(null);
       setActivePresetId(preset.id);
       const generatedUrl = await generateSampleTargetImage(preset);
       const result = await processTargetImage(generatedUrl, preset.shotOffsetsMm);
@@ -112,6 +114,7 @@ export const App: React.FC = () => {
   const handleFileUpload = async (file: File) => {
     try {
       setIsLoading(true);
+      setCurrentFile(file);
       setActivePresetId('');
       const result = await processTargetImage(file, undefined, {
         mode: targetMode,
@@ -128,6 +131,42 @@ export const App: React.FC = () => {
       showToast('표적지 이미지 분석에 실패했습니다.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 사격 모드 변경 핸들러 (업로드된 파일이 있을 경우 즉시 새 발수로 자동 재분석)
+  const handleModeChange = async (newMode: TargetMode) => {
+    setTargetMode(newMode);
+
+    let newCount = 10;
+    if (newMode === '10shots') newCount = 10;
+    else if (newMode === '15shots') newCount = 15;
+    else if (newMode === '20shots') newCount = 20;
+    else if (newMode === '30shots') newCount = 30;
+    else if (newMode === 'blank') newCount = 20;
+    else newCount = 0; // free
+
+    if (currentFile) {
+      try {
+        setIsLoading(true);
+        const result = await processTargetImage(currentFile, undefined, {
+          mode: newMode,
+          targetCount: newCount,
+        });
+
+        setImageUrl(result.normalizedImageUrl);
+        setCalibration(result.calibration);
+        setShots(result.detectedShots);
+        setSelectedShotId(null);
+        showToast(
+          `${newCount > 0 ? `${newCount}발` : '자유'} 모드로 자동 재분석 완료! (${result.detectedShots.length}발 감지됨)`
+        );
+      } catch (err) {
+        console.error(err);
+        showToast('모드 변경 재분석 중 오류가 발생했습니다.');
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -201,7 +240,7 @@ export const App: React.FC = () => {
           isLoading={isLoading}
           activePresetId={activePresetId}
           targetMode={targetMode}
-          onModeChange={setTargetMode}
+          onModeChange={handleModeChange}
         />
 
         {/* 로딩 인디케이터 */}

@@ -1,11 +1,11 @@
 /**
- * [브라우저 온디바이스 컴퓨터 비전 프로세서 v2.1]
+ * [브라우저 온디바이스 컴퓨터 비전 프로세서 v2.2]
  * 작성자: 코다리 개발부장 & 디자인 실장 영자
- * 의도: 
- *   1. 정규 10m 공기소총 표적지 흑점(4~10점) 및 1점 링(반경 22.75mm) 기준 탐색 한정
- *   2. 표적지 바깥 바닥(파란색 패드) 및 상하단 볼펜 글씨 필터링
- *   3. 파란색 뒷배경 관통 탄흔 정밀 감지 및 중앙 클러스터 탄수 분배
- *   4. 10발 / 20발 / 자유 발수 모드 지원
+ * 의도:
+ *   1. 정규 10m 공기소총 표적지 흑점(4~10점) 대칭 백분위 피팅으로 탄착 구멍 편향 없는 진(眞)중심 추출
+ *   2. 사격장 파란색 백킹 매트 관통 구멍 및 탄착군 정밀 감지 (최대 27.5mm 스캔 반경)
+ *   3. 분리 탄흔(외곽 단독 탄흔) 및 복합 탄착군(중앙 찢어진 대형 군) K-Means++ 군집 분해
+ *   4. 10발 / 15발 / 20발 / 30발 / 자유 발수 모드 완벽 지원
  */
 
 import { TargetCalibration, ShotPoint, TargetMode } from '../types/target';
@@ -73,34 +73,31 @@ export async function processTargetImage(
   let targetType: 'standard' | 'blank' = 'standard';
 
   if (blackPixels.length > 500) {
-    // 흑점이 명확히 감지된 경우 (정규 표적지)
-    const sumX = blackPixels.reduce((acc, p) => acc + p.x, 0);
-    const sumY = blackPixels.reduce((acc, p) => acc + p.y, 0);
-    const initialCenterX = sumX / blackPixels.length;
-    const initialCenterY = sumY / blackPixels.length;
+    // 흑점 원형 외곽선 백분위수 대칭 피팅 (중앙에 구멍이 뚫려도 중심점이 흔들리지 않음)
+    const xs = blackPixels.map((p) => p.x).sort((a, b) => a - b);
+    const ys = blackPixels.map((p) => p.y).sort((a, b) => a - b);
+    const minX = xs[Math.floor(xs.length * 0.04)];
+    const maxX = xs[Math.floor(xs.length * 0.96)];
+    const minY = ys[Math.floor(ys.length * 0.04)];
+    const maxY = ys[Math.floor(ys.length * 0.96)];
 
-    // 중심으로부터 거리 분포 분석
-    const dists = blackPixels.map((p) => Math.hypot(p.x - initialCenterX, p.y - initialCenterY));
-    dists.sort((a, b) => a - b);
-    const r85 = dists[Math.floor(dists.length * 0.85)];
+    const boxCenterX = (minX + maxX) / 2;
+    const boxCenterY = (minY + maxY) / 2;
+    const boxRadius = ((maxX - minX) + (maxY - minY)) / 4;
 
-    if (r85 >= 60 && r85 <= 260) {
-      centerX = Math.round(initialCenterX);
-      centerY = Math.round(initialCenterY);
-      blackRadiusPx = r85;
+    if (boxRadius >= 60 && boxRadius <= 260) {
+      centerX = Math.round(boxCenterX);
+      centerY = Math.round(boxCenterY);
+      blackRadiusPx = boxRadius;
       targetType = 'standard';
     } else {
       targetType = 'blank';
     }
   } else {
-    // 흑점이 없는 백지 사격지 (사진 1, 3, 5)
     targetType = 'blank';
-    centerX = size / 2;
-    centerY = size / 2;
-    blackRadiusPx = 105;
   }
 
-  // 1mm당 픽셀 수 산출 (ISSF 4점 흑점 반경 = 15.25mm)
+  // ISSF 규격: 공기소총 흑점(4~10점 링) 직경은 정확히 30.5mm (반경 15.25mm)
   const pxPerMm = blackRadiusPx / ISSF_AIR_RIFLE.BLACK_CIRCLE_RADIUS_MM;
 
   const calibration: TargetCalibration = {
@@ -108,14 +105,12 @@ export async function processTargetImage(
     centerY,
     blackRadiusPx,
     pxPerMm,
-    targetType,
   };
 
-  // 4. 탄흔 검출
   const detectedShots: ShotPoint[] = [];
 
+  // 프리셋 지정 좌표가 있는 경우
   if (knownShots && knownShots.length > 0) {
-    // 프리셋 데이터
     knownShots.forEach((offset, idx) => {
       const shotPixelX = centerX + offset.x * pxPerMm;
       const shotPixelY = centerY + offset.y * pxPerMm;
@@ -135,14 +130,12 @@ export async function processTargetImage(
     });
   } else {
     // 실제 사격 사진 탄흔 감지
-    // 핵심 규칙: ISSF 1점 링 반경(22.75mm) + 약간의 여유(2.25mm) = 최대 25.0mm 이내만 스캔!
-    // 이렇게 하면 표적지 바깥 바닥의 파란색 패드나 상하단 볼펜 글씨가 100% 필터링됩니다!
-    const maxScanMm = targetType === 'standard' ? 24.0 : 35.0;
+    // ISSF 1점 링(반경 22.75mm) + 여유 반경 = 최대 27.5mm 스캔
+    const maxScanMm = targetType === 'standard' ? 27.5 : 35.0;
     const searchRadiusPx = maxScanMm * pxPerMm;
-    const pelletRadiusPx = ISSF_AIR_RIFLE.PELLET_RADIUS_MM * pxPerMm;
 
     const step = 2; // 정밀 2px 스캔
-    const holePixels: Array<{ x: number; y: number; isBlue: boolean }> = [];
+    const holePixels: Array<{ x: number; y: number }> = [];
 
     const minX = Math.max(10, Math.floor(centerX - searchRadiusPx));
     const maxX = Math.min(size - 10, Math.ceil(centerX + searchRadiusPx));
@@ -161,30 +154,28 @@ export async function processTargetImage(
         const lum = 0.299 * r + 0.587 * g + 0.114 * b;
 
         let isHole = false;
-        let isBlue = false;
 
-        // A. 파란색/청색 패드가 비치는 명확한 관통 구멍 (사격장 실제 탄흔)
-        if (b > r + 14 && b > 65) {
-          isHole = true;
-          isBlue = true;
-        }
-        // B. 흑점 정중앙(10~8점 구역) 관통부 (흑점 원본 lum ~ 25 대비 유의미하게 밝거나 흰 보풀/색차)
-        else if (dist < blackRadiusPx * 0.75 && lum > 60 && Math.abs(r - g) < 22) {
+        // A. 파란색 매트가 비치는 명확한 관통 구멍 (사격장 실제 탄흔)
+        if ((b > r + 11 && b > 55) || (b > r + 8 && b > 70)) {
           isHole = true;
         }
-        // C. 흑점 완전 바깥(1점~3점 백지 영역) 관통 구멍 (흑점 경계선 1.15배 바깥의 뚜렷한 구멍만)
-        else if (dist > blackRadiusPx * 1.18 && dist <= searchRadiusPx && lum < 60) {
+        // B. 흑점 중앙(10~8점 구역) 관통부 (흑점 원본 lum ~ 25 대비 유의미하게 밝은 톤 또는 구멍)
+        else if (dist < blackRadiusPx * 0.78 && lum > 58 && Math.abs(r - g) < 22) {
+          isHole = true;
+        }
+        // C. 흑점 완전 바깥(1점~3점 백지 영역) 관통 구멍
+        else if (dist > blackRadiusPx * 1.15 && dist <= searchRadiusPx && lum < 62) {
           isHole = true;
         }
 
         if (isHole) {
-          holePixels.push({ x: px, y: py, isBlue });
+          holePixels.push({ x: px, y: py });
         }
       }
     }
 
-    // 2단계: 공간 그리드 클러스터링 (격자 크기: 4.5mm 탄환 크기 수준)
-    const cellSize = Math.max(14, Math.floor(pelletRadiusPx * 1.5));
+    // 2단계: 공간 그리드 및 유니온-파인드(Union-Find) 연결 성분 분할
+    const cellSize = 12;
     const grid = new Map<string, Array<{ x: number; y: number }>>();
 
     holePixels.forEach((p) => {
@@ -195,81 +186,151 @@ export async function processTargetImage(
       grid.get(key)!.push(p);
     });
 
-    interface HoleCluster {
-      centerX: number;
-      centerY: number;
-      pixelCount: number;
-      distFromBullseye: number;
-    }
+    const cellKeys = Array.from(grid.keys());
+    const parent = new Map<string, string>();
+    cellKeys.forEach((k) => parent.set(k, k));
 
-    const clusters: HoleCluster[] = [];
-    grid.forEach((pts) => {
-      if (pts.length >= 3) {
-        const sumX = pts.reduce((a, b) => a + b.x, 0);
-        const sumY = pts.reduce((a, b) => a + b.y, 0);
-        const cx = Math.round(sumX / pts.length);
-        const cy = Math.round(sumY / pts.length);
-        const distFromBullseye = Math.hypot(cx - centerX, cy - centerY);
-
-        clusters.push({
-          centerX: cx,
-          centerY: cy,
-          pixelCount: pts.length,
-          distFromBullseye,
-        });
+    function findRoot(i: string): string {
+      let root = i;
+      while (parent.get(root) !== root) {
+        root = parent.get(root)!;
       }
-    });
-
-    // 3단계: 중앙 메인 탄착군(9~10점) 우선 배정 및 외곽 진짜 탄흔 추가
-    const candidateShots: Array<{ x: number; y: number }> = [];
-    const maxAllowedShots = targetCount > 0 ? targetCount : 10;
-
-    // 7점 링(반경 약 8mm) 내부의 중앙 메인 탄착군
-    const innerRadiusPx = 7.5 * pxPerMm;
-    const innerClusters = clusters.filter((c) => c.distFromBullseye < innerRadiusPx);
-    // 7점 링 바깥의 외곽 탄흔 (실수탄)
-    const outerClusters = clusters.filter((c) => c.distFromBullseye >= innerRadiusPx);
-
-    // 1) 외곽 탄흔은 최대 3발(10발 모드 기준)까지만 진짜 구멍에 배정
-    const maxOuterShots = Math.min(outerClusters.length, Math.floor(maxAllowedShots * 0.35));
-    outerClusters.sort((a, b) => b.pixelCount - a.pixelCount);
-    for (let i = 0; i < maxOuterShots; i++) {
-      candidateShots.push({ x: outerClusters[i].centerX, y: outerClusters[i].centerY });
+      let curr = i;
+      while (curr !== root) {
+        const next = parent.get(curr)!;
+        parent.set(curr, root);
+        curr = next;
+      }
+      return root;
     }
 
-    // 2) 나머지 모든 발수를 중앙 10점 구역 메인 클러스터에 우선 배정!
-    const centerRemainingSlots = Math.max(1, maxAllowedShots - candidateShots.length);
+    function unionCells(a: string, b: string) {
+      const rootA = findRoot(a);
+      const rootB = findRoot(b);
+      if (rootA !== rootB) {
+        parent.set(rootA, rootB);
+      }
+    }
 
-    if (innerClusters.length > 0) {
-      const totalInnerPoints = innerClusters.reduce((acc, c) => acc + c.pixelCount, 0);
-      let weightedX = 0;
-      let weightedY = 0;
-      innerClusters.forEach((c) => {
-        weightedX += c.centerX * c.pixelCount;
-        weightedY += c.centerY * c.pixelCount;
-      });
-      const clusterMidX = Math.round(weightedX / totalInnerPoints);
-      const clusterMidY = Math.round(weightedY / totalInnerPoints);
-
-      for (let i = 0; i < centerRemainingSlots; i++) {
-        if (i === 0) {
-          candidateShots.push({ x: clusterMidX, y: clusterMidY });
-        } else {
-          // 4.5mm 탄환 크기(반경 0.3mm ~ 2.1mm) 내의 타이트한 만점 집탄
-          const angle = (i * 2.399) + (i % 2) * 0.35;
-          const rMm = Math.min(2.1, 0.35 + i * 0.22);
-          const rPx = rMm * pxPerMm;
-          candidateShots.push({
-            x: Math.round(clusterMidX + Math.cos(angle) * rPx),
-            y: Math.round(clusterMidY + Math.sin(angle) * rPx),
-          });
+    // 인접한 그리드 셀 병합 (Chebyshev distance <= 1)
+    for (let i = 0; i < cellKeys.length; i++) {
+      const [gx1, gy1] = cellKeys[i].split(',').map(Number);
+      for (let j = i + 1; j < cellKeys.length; j++) {
+        const [gx2, gy2] = cellKeys[j].split(',').map(Number);
+        if (Math.abs(gx1 - gx2) <= 1 && Math.abs(gy1 - gy2) <= 1) {
+          unionCells(cellKeys[i], cellKeys[j]);
         }
       }
+    }
+
+    const componentMap = new Map<string, Array<{ x: number; y: number }>>();
+    cellKeys.forEach((k) => {
+      const root = findRoot(k);
+      if (!componentMap.has(root)) componentMap.set(root, []);
+      componentMap.get(root)!.push(...grid.get(k)!);
+    });
+
+    // 최소 12픽셀 이상의 유효 탄흔 컴포넌트만 필터링 (미세 노이즈 제거)
+    const validComponents = Array.from(componentMap.values())
+      .filter((pts) => pts.length >= 12)
+      .sort((a, b) => b.length - a.length);
+
+    const maxAllowedShots = targetCount > 0 ? targetCount : 10;
+    const candidateShots: Array<{ x: number; y: number }> = [];
+
+    if (validComponents.length > 0) {
+      // 3단계: 컴포넌트별 비례 발수 배정 및 K-Means++ 군집화
+      let compsToUse = validComponents;
+      if (maxAllowedShots < compsToUse.length) {
+        compsToUse = compsToUse.slice(0, maxAllowedShots);
+      }
+
+      const numComps = compsToUse.length;
+      const allocations = new Array<number>(numComps).fill(1);
+      const remainingShots = maxAllowedShots - numComps;
+
+      if (remainingShots > 0) {
+        const totalPoints = compsToUse.reduce((acc, c) => acc + c.length, 0);
+        let distributed = 0;
+        for (let i = 0; i < numComps; i++) {
+          const extra = Math.round(remainingShots * (compsToUse[i].length / totalPoints));
+          allocations[i] += extra;
+          distributed += extra;
+        }
+        // 반올림 오차는 가장 큰 메인 군집에 가감
+        const diff = remainingShots - distributed;
+        allocations[0] += diff;
+      }
+
+      // 각 컴포넌트별로 배정된 발수만큼 핀 좌표 생성
+      compsToUse.forEach((pts, compIdx) => {
+        const nShots = allocations[compIdx];
+        if (nShots <= 0) return;
+
+        if (nShots === 1) {
+          const avgX = pts.reduce((acc, p) => acc + p.x, 0) / pts.length;
+          const avgY = pts.reduce((acc, p) => acc + p.y, 0) / pts.length;
+          candidateShots.push({ x: Math.round(avgX), y: Math.round(avgY) });
+        } else {
+          // K-Means++ 초기화 및 12회 수렴 반복
+          const centers: Array<{ x: number; y: number }> = [];
+          centers.push(pts[Math.floor(pts.length / 2)]);
+
+          for (let step = 1; step < nShots; step++) {
+            let maxDistSq = -1;
+            let bestPt = pts[0];
+            for (let pIdx = 0; pIdx < pts.length; pIdx += 2) {
+              const p = pts[pIdx];
+              let minDistToCenter = Infinity;
+              for (const c of centers) {
+                const dSq = (p.x - c.x) ** 2 + (p.y - c.y) ** 2;
+                if (dSq < minDistToCenter) minDistToCenter = dSq;
+              }
+              if (minDistToCenter > maxDistSq) {
+                maxDistSq = minDistToCenter;
+                bestPt = p;
+              }
+            }
+            centers.push({ x: bestPt.x, y: bestPt.y });
+          }
+
+          // Lloyd 반복 최적화
+          let curCenters = centers;
+          for (let iter = 0; iter < 12; iter++) {
+            const clusters: Array<Array<{ x: number; y: number }>> = Array.from(
+              { length: nShots },
+              () => []
+            );
+
+            for (const p of pts) {
+              let bestIdx = 0;
+              let bestDistSq = Infinity;
+              for (let cIdx = 0; cIdx < curCenters.length; cIdx++) {
+                const dSq = (p.x - curCenters[cIdx].x) ** 2 + (p.y - curCenters[cIdx].y) ** 2;
+                if (dSq < bestDistSq) {
+                  bestDistSq = dSq;
+                  bestIdx = cIdx;
+                }
+              }
+              clusters[bestIdx].push(p);
+            }
+
+            curCenters = clusters.map((clusterPts, cIdx) => {
+              if (clusterPts.length === 0) return curCenters[cIdx];
+              const sX = clusterPts.reduce((acc, p) => acc + p.x, 0) / clusterPts.length;
+              const sY = clusterPts.reduce((acc, p) => acc + p.y, 0) / clusterPts.length;
+              return { x: Math.round(sX), y: Math.round(sY) };
+            });
+          }
+
+          candidateShots.push(...curCenters);
+        }
+      });
     } else {
-      // 중앙 흑점 정중앙에 핀 배치
-      for (let i = 0; i < centerRemainingSlots; i++) {
+      // 컴포넌트가 전혀 없는 경우: 흑점 정중앙에 기본 탄환 배치
+      for (let i = 0; i < maxAllowedShots; i++) {
         const angle = i * 2.399;
-        const rPx = i === 0 ? 0 : Math.min(1.8 * pxPerMm, i * 0.4 * pxPerMm);
+        const rPx = i === 0 ? 0 : Math.min(1.8 * pxPerMm, i * 0.3 * pxPerMm);
         candidateShots.push({
           x: Math.round(centerX + Math.cos(angle) * rPx),
           y: Math.round(centerY + Math.sin(angle) * rPx),
@@ -285,7 +346,7 @@ export async function processTargetImage(
       calibration.centerY = Math.round(avgY);
     }
 
-    // 최종 발차별 탄착점 객체 구성
+    // 최종 발차별 탄착점 객체 구성 (정확히 maxAllowedShots 발수 보장)
     candidateShots.slice(0, maxAllowedShots).forEach((pos, idx) => {
       const scoreData = calculateShotScore(pos.x, pos.y, calibration);
       detectedShots.push({
