@@ -14,6 +14,8 @@ interface HeaderProps {
   historyCount: number;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  onOpenSettings: () => void;
+  hasApiKey: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -23,6 +25,8 @@ export const Header: React.FC<HeaderProps> = ({
   historyCount,
   theme,
   onToggleTheme,
+  onOpenSettings,
+  hasApiKey,
 }) => {
   return (
     <header className="w-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 py-3 px-4 md:px-8 flex items-center justify-between sticky top-0 z-40 transition-colors">
@@ -48,6 +52,25 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* 액션 버튼 바 (터치 영역 44px 이상 확보) */}
       <div className="flex items-center gap-2">
+        {/* AI 엔진 설정 버튼 */}
+        <button
+          onClick={onOpenSettings}
+          className={`h-10 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+            hasApiKey
+              ? 'bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+              : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+          }`}
+          title="Google Gemini AI 정밀 비전 설정"
+        >
+          <Sparkles className={`w-4 h-4 ${hasApiKey ? 'text-indigo-500 fill-indigo-500/20' : 'text-slate-500'}`} />
+          <span className="hidden sm:inline">AI 엔진</span>
+          {hasApiKey ? (
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="AI 활성화됨" />
+          ) : (
+            <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1 rounded">OFF</span>
+          )}
+        </button>
+
         {/* 라이트/다크 모드 토글 */}
         <button
           onClick={onToggleTheme}

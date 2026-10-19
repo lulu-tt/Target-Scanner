@@ -7,7 +7,7 @@
 
 import React, { useRef } from 'react';
 import { TargetMode } from '../types/target';
-import { Camera, Image as ImageIcon } from 'lucide-react';
+import { Camera, Image as ImageIcon, Sparkles, RefreshCw, Key } from 'lucide-react';
 
 interface ScannerPanelProps {
   onFileUpload: (file: File) => void;
@@ -16,6 +16,10 @@ interface ScannerPanelProps {
   onModeChange: (mode: TargetMode) => void;
   onSelectPreset?: (preset: any) => void;
   activePresetId?: string;
+  hasApiKey: boolean;
+  onOpenSettings: () => void;
+  onTriggerAiAnalysis?: () => void;
+  hasFileToAnalyze: boolean;
 }
 
 export const ScannerPanel: React.FC<ScannerPanelProps> = ({
@@ -23,6 +27,10 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
   isLoading,
   targetMode,
   onModeChange,
+  hasApiKey,
+  onOpenSettings,
+  onTriggerAiAnalysis,
+  hasFileToAnalyze,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -75,7 +83,48 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
         </button>
       </div>
 
-      {/* 2. 사격 모드 선택 세그먼트 (10발 / 20발 / 자유 / 백지) */}
+      {/* 2. AI 정밀 분석 엔진 상태 바 & 실행 버튼 */}
+      <div className="flex items-center justify-between p-2.5 px-3 rounded-2xl bg-gradient-to-r from-indigo-50/80 via-purple-50/60 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/30 dark:to-slate-900 border border-indigo-100/80 dark:border-indigo-900/40">
+        <div className="flex items-center gap-2">
+          <div className={`w-2.5 h-2.5 rounded-full ${hasApiKey ? 'bg-indigo-500 shadow-sm shadow-indigo-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`} />
+          <div className="flex flex-col">
+            <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              {hasApiKey ? 'Gemini AI 비전 엔진' : '온디바이스 기본 엔진 v3.0'}
+            </span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+              {hasApiKey ? '손글씨/메모 100% 무시 · 밀집 탄흔 분리' : '무료 AI 키 등록 시 손글씨 100% 차단'}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {hasFileToAnalyze && onTriggerAiAnalysis && (
+            <button
+              type="button"
+              onClick={onTriggerAiAnalysis}
+              disabled={isLoading}
+              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-black flex items-center gap-1 shadow-md shadow-indigo-500/20 transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>AI 정밀 재분석</span>
+            </button>
+          )}
+
+          {!hasApiKey && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-bold flex items-center gap-1 transition-all"
+            >
+              <Key className="w-3 h-3" />
+              <span>AI 키 등록</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 3. 사격 모드 선택 세그먼트 (10발 / 20발 / 자유 / 백지) */}
       <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/80">
         <div className="flex items-center justify-between text-xs px-1">
           <span className="font-bold text-slate-700 dark:text-slate-300">

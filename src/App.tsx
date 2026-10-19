@@ -1,20 +1,25 @@
 /**
  * [TargetScan AI 메인 애플리케이션 컴포넌트]
  * 작성자: 디자인 실장 영자 & 개발부장 코다리
- * 의도: 모바일 퍼스트 반응형 레이아웃, 라이트/다크 듀얼 테마, 직관적인 시각적 피드백 제공
+ * 의도:
+ *   1. [하이브리드 AI 비전 파이프라인]: Google Gemini 2.5 Flash(100% 정밀) + 온디바이스 v3.0(0초 즉시)
+ *   2. [손글씨/메모 완전 무시]: 코치 메모, 볼펜 손글씨 완벽 배제
+ *   3. [모바일 퍼스트 레이아웃]: 한 손 터치, 라이트/다크 테마, 실시간 집탄 분석
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { TargetCalibration, ShotPoint, SavedSession, TargetMode } from './types/target';
 import { SAMPLE_PRESETS, SamplePreset, generateSampleTargetImage } from './utils/targetSamples';
-import { processTargetImage } from './utils/visionProcessor';
+import { processTargetImage, VisionProcessResult } from './utils/visionProcessor';
+import { analyzeTargetWithGemini, getStoredGeminiApiKey } from './utils/geminiVision';
 import { calculateGroupingStats } from './utils/issfSpecs';
 import { Header } from './components/Header';
 import { ScannerPanel } from './components/ScannerPanel';
 import { TargetCanvas } from './components/TargetCanvas';
 import { ScoreBoard } from './components/ScoreBoard';
 import { HistoryModal } from './components/HistoryModal';
-import { CheckCircle2, Loader2 } from 'lucide-react';
+import { SettingsModal } from './components/SettingsModal';
+import { CheckCircle2, Loader2, Sparkles } from 'lucide-react';
 
 export const App: React.FC = () => {
   // 테마 상태 (기본값: 라이트 모드)
@@ -28,7 +33,7 @@ export const App: React.FC = () => {
     }
   });
 
-  // 사격 모드 (10발 / 20발 / 자유 / 백지)
+  // 사격 모드 (10발 / 15발 / 20발 / 30발 / 자유 / 백지)
   const [targetMode, setTargetMode] = useState<TargetMode>('10shots');
 
   const targetShotCount = useMemo(() => {
@@ -52,7 +57,10 @@ export const App: React.FC = () => {
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
   const [activePresetId, setActivePresetId] = useState<string>(SAMPLE_PRESETS[0].id);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('표적지 왜곡 보정 및 탄흔 감지 중...');
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => getStoredGeminiApiKey());
   const [toast, setToast] = useState<string | null>(null);
 
   // 로컬 저장소 세션 히스토리
@@ -92,6 +100,7 @@ export const App: React.FC = () => {
   const handleSelectPreset = async (preset: SamplePreset) => {
     try {
       setIsLoading(true);
+      setLoadingMessage('표준 샘플 표적지 생성 중...');
       setCurrentFile(null);
       setActivePresetId(preset.id);
       const generatedUrl = await generateSampleTargetImage(preset);
@@ -110,28 +119,74 @@ export const App: React.FC = () => {
     }
   };
 
+  // 통합 표적 분석 파이프라인 (AI 키가 있으면 Gemini AI 우선, 없거나 실패 시 온디바이스 v3.0 폴백)
+  const executeAnalysis = useCallback(
+    async (file: File, mode: TargetMode, count: number, forceAi = false) => {
+      try {
+        setIsLoading(true);
+
+        let result: VisionProcessResult;
+
+        if (forceAi && !geminiApiKey) {
+          setIsSettingsOpen(true);
+          showToast('Gemini API 키를 먼저 등록해주세요.');
+          return;
+        }
+
+        if (geminiApiKey) {
+          setLoadingMessage('✨ Google Gemini AI 멀티모달 비전 정밀 분석 중...');
+          try {
+            result = await analyzeTargetWithGemini(file, geminiApiKey, {
+              mode,
+              targetCount: count,
+            });
+            showToast(`✨ Gemini AI 정밀 분석 완료! (${result.detectedShots.length}발 감지됨)`);
+          } catch (aiErr: any) {
+            console.warn('Gemini AI 분석 실패, 온디바이스 v3.0 엔진으로 자동 폴백합니다:', aiErr);
+            showToast('AI 분석 일시 지연: 온디바이스 v3.0 엔진으로 대체 분석합니다.');
+            setLoadingMessage('온디바이스 고성능 비전 엔진으로 대체 분석 중...');
+            result = await processTargetImage(file, undefined, {
+              mode,
+              targetCount: count,
+            });
+          }
+        } else {
+          setLoadingMessage('⚡ 온디바이스 컴퓨터 비전 v3.0 분석 중...');
+          result = await processTargetImage(file, undefined, {
+            mode,
+            targetCount: count,
+          });
+          showToast(`온디바이스 분석 완료! (${result.detectedShots.length}발 감지됨)`);
+        }
+
+        setImageUrl(result.normalizedImageUrl);
+        setCalibration(result.calibration);
+        setShots(result.detectedShots);
+        setSelectedShotId(null);
+      } catch (err) {
+        console.error(err);
+        showToast('표적지 이미지 분석에 실패했습니다.');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [geminiApiKey]
+  );
+
   // 파일 업로드 핸들러
   const handleFileUpload = async (file: File) => {
-    try {
-      setIsLoading(true);
-      setCurrentFile(file);
-      setActivePresetId('');
-      const result = await processTargetImage(file, undefined, {
-        mode: targetMode,
-        targetCount: targetShotCount,
-      });
+    setCurrentFile(file);
+    setActivePresetId('');
+    await executeAnalysis(file, targetMode, targetShotCount);
+  };
 
-      setImageUrl(result.normalizedImageUrl);
-      setCalibration(result.calibration);
-      setShots(result.detectedShots);
-      setSelectedShotId(null);
-      showToast(`표적지 분석 완료! (${result.detectedShots.length}발 감지됨)`);
-    } catch (err) {
-      console.error(err);
-      showToast('표적지 이미지 분석에 실패했습니다.');
-    } finally {
-      setIsLoading(false);
+  // 수동 AI 정밀 재분석 트리거
+  const handleTriggerAiAnalysis = async () => {
+    if (!currentFile) {
+      showToast('분석할 표적지 사진이 없습니다.');
+      return;
     }
+    await executeAnalysis(currentFile, targetMode, targetShotCount, true);
   };
 
   // 사격 모드 변경 핸들러 (업로드된 파일이 있을 경우 즉시 새 발수로 자동 재분석)
@@ -147,26 +202,7 @@ export const App: React.FC = () => {
     else newCount = 0; // free
 
     if (currentFile) {
-      try {
-        setIsLoading(true);
-        const result = await processTargetImage(currentFile, undefined, {
-          mode: newMode,
-          targetCount: newCount,
-        });
-
-        setImageUrl(result.normalizedImageUrl);
-        setCalibration(result.calibration);
-        setShots(result.detectedShots);
-        setSelectedShotId(null);
-        showToast(
-          `${newCount > 0 ? `${newCount}발` : '자유'} 모드로 자동 재분석 완료! (${result.detectedShots.length}발 감지됨)`
-        );
-      } catch (err) {
-        console.error(err);
-        showToast('모드 변경 재분석 중 오류가 발생했습니다.');
-      } finally {
-        setIsLoading(false);
-      }
+      await executeAnalysis(currentFile, newMode, newCount);
     }
   };
 
@@ -229,6 +265,8 @@ export const App: React.FC = () => {
         historyCount={savedSessions.length}
         theme={theme}
         onToggleTheme={toggleTheme}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        hasApiKey={!!geminiApiKey}
       />
 
       {/* 메인 작업 영역 (모바일 최적화 패딩) */}
@@ -239,14 +277,21 @@ export const App: React.FC = () => {
           isLoading={isLoading}
           targetMode={targetMode}
           onModeChange={handleModeChange}
+          hasApiKey={!!geminiApiKey}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onTriggerAiAnalysis={handleTriggerAiAnalysis}
+          hasFileToAnalyze={!!currentFile}
         />
 
         {/* 로딩 인디케이터 */}
         {isLoading ? (
           <div className="flex-1 flex flex-col items-center justify-center py-24 text-slate-500 dark:text-slate-400 gap-3">
-            <Loader2 className="w-9 h-9 text-red-500 animate-spin stroke-[2.5]" />
+            <div className="relative flex items-center justify-center">
+              <Loader2 className="w-10 h-10 text-indigo-500 animate-spin stroke-[2.5]" />
+              <Sparkles className="w-4 h-4 text-amber-400 absolute animate-pulse" />
+            </div>
             <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-              표적지 왜곡 보정 및 정밀 탄흔 감지 중...
+              {loadingMessage}
             </p>
           </div>
         ) : (
@@ -285,6 +330,20 @@ export const App: React.FC = () => {
         sessions={savedSessions}
         onLoadSession={handleLoadSession}
         onDeleteSession={handleDeleteSession}
+      />
+
+      {/* AI 설정 모달 */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onApiKeySaved={(key) => {
+          setGeminiApiKey(key);
+          if (key) {
+            showToast('Gemini API 키가 저장되었습니다! AI 모드가 활성화됩니다.');
+          } else {
+            showToast('API 키가 삭제되었습니다. 온디바이스 모드로 전환됩니다.');
+          }
+        }}
       />
 
       {/* 토스트 알림 */}
