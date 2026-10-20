@@ -116,17 +116,20 @@ export async function analyzeTargetWithGemini(
   const { base64Data, mimeType, dataUrl } = await prepareImageBase64(imageSource);
 
   const prompt = `You are a world-class Olympic shooting target analysis and scoring AI for ISSF 10m Air Rifle.
-The user provided a photo of a shooting target resized/centered onto an 800x800 coordinate plane:
-- Top-left is (0, 0), Bottom-right is (800, 800).
+The user provided a photo of a shooting target.
+Analyze the target and return all spatial coordinates strictly on a standardized 0 to 1000 scale:
+- (0, 0) is the top-left corner of the image.
+- (1000, 1000) is the bottom-right corner of the image.
+- (500, 500) represents the exact geometric center.
 
 CRITICAL INSTRUCTIONS:
-1. TARGET BULLSEYE CENTER & RADIUS (FOCUS ALIGNMENT):
-   - 'standard': Has black concentric bullseye rings (4 to 10 rings).
-     Find the EXACT geometric center of the black circular bullseye area as (centerX, centerY).
-     Measure the EXACT radius in pixels from (centerX, centerY) to the outer boundary of the black circle (the 4-ring boundary) as 'blackRadiusPx' (typically between 70 and 130 pixels).
+1. TARGET BULLSEYE CENTER & RADIUS (0-1000 scale):
+   - 'standard': Has black concentric bullseye scoring rings (4 to 10 rings).
+     Find the EXACT geometric center of the black circular bullseye as (centerX, centerY) on the 0-1000 scale (typically near 500, 500).
+     Measure the EXACT radius on the 0-1000 scale from (centerX, centerY) to the outer boundary of the black circle (the 4-ring boundary) as 'blackRadius' (typically between 90 and 150).
    - 'blank': A white paper target without black rings (often mounted on blue/green rubber or cardboard backing).
-     Detect the true centroid of the bullet cluster as (centerX, centerY), and set blackRadiusPx to 95.
-2. BULLET HOLE DETECTION (SHOTS):
+     Detect the true centroid of the bullet cluster as (centerX, centerY) on the 0-1000 scale, and set blackRadius to 118.
+2. BULLET HOLE DETECTION (SHOTS on 0-1000 scale):
    - The user specified a target count of ${targetCount > 0 ? `${targetCount} shots` : 'all visible shots'}.
    - Bullet holes are physical 4.5mm round punctures through the paper, revealing backing (often dark blue, black, or grey) with pellet grease rings and ragged paper tear edges.
    - ⚠️ STRICTLY REJECT ALL HANDWRITING & INK NOTES:
@@ -138,9 +141,9 @@ CRITICAL INSTRUCTIONS:
    Return strictly valid JSON matching this schema:
    {
      "targetType": "standard" | "blank",
-     "centerX": number (exact bullseye center, around 400),
-     "centerY": number (exact bullseye center, around 400),
-     "blackRadiusPx": number (exact pixel radius of black bullseye, e.g. 94),
+     "centerX": number (0 to 1000 scale),
+     "centerY": number (0 to 1000 scale),
+     "blackRadius": number (0 to 1000 scale radius of black circle),
      "shots": [
        { "x": number, "y": number }
      ]
@@ -203,7 +206,7 @@ CRITICAL INSTRUCTIONS:
     throw lastError || new Error('Gemini API로부터 응답을 받지 못했습니다.');
   }
 
-  let parsed: GeminiTargetResponse;
+  let parsed: any;
   try {
     parsed = JSON.parse(candidateText);
   } catch (err) {
@@ -211,15 +214,33 @@ CRITICAL INSTRUCTIONS:
     throw new Error('Gemini 분석 결과 형식이 올바르지 않습니다.');
   }
 
-  // 기본값 보정
-  const centerX = typeof parsed.centerX === 'number' && !isNaN(parsed.centerX) ? parsed.centerX : 400;
-  const centerY = typeof parsed.centerY === 'number' && !isNaN(parsed.centerY) ? parsed.centerY : 400;
+  // 구글 비전 표준 [0, 1000] 정규화 좌표계를 800x800 캔버스 좌표계로 정확하게 리스케일링
+  const toCanvasCoord = (val: number, fallback = 400): number => {
+    if (typeof val !== 'number' || isNaN(val)) return fallback;
+    // 0~1000 스케일 (일반적인 구글 비전 모델 응답)
+    if (val > 1.0) {
+      return Math.round((val / 1000) * 800);
+    }
+    // 0.0~1.0 소수점 비율인 경우
+    return Math.round(val * 800);
+  };
+
+  const toCanvasRadius = (val: number, fallback = 95): number => {
+    if (typeof val !== 'number' || isNaN(val)) return fallback;
+    if (val > 1.0) {
+      return Math.round((val / 1000) * 800);
+    }
+    return Math.round(val * 800);
+  };
+
+  const centerX = toCanvasCoord(parsed.centerX, 400);
+  const centerY = toCanvasCoord(parsed.centerY, 400);
   const targetType = parsed.targetType === 'blank' ? 'blank' : 'standard';
 
   // 실제 흑점 반경(픽셀) 기반 1mm당 픽셀 수(pxPerMm) 동적 정밀 산출
-  let blackRadiusPx = 95;
-  if (typeof parsed.blackRadiusPx === 'number' && parsed.blackRadiusPx >= 40 && parsed.blackRadiusPx <= 250) {
-    blackRadiusPx = Math.round(parsed.blackRadiusPx);
+  let blackRadiusPx = toCanvasRadius(parsed.blackRadius || parsed.blackRadiusPx, 95);
+  if (blackRadiusPx < 40 || blackRadiusPx > 320) {
+    blackRadiusPx = 95;
   }
 
   // ISSF 공식 규격: 공기소총 흑점(4~10점 링) 반경은 15.25mm
@@ -234,10 +255,10 @@ CRITICAL INSTRUCTIONS:
   };
 
   // 탄착점 ShotPoint 배열 구성 및 ISSF 점수 산출
-  const rawShots = Array.isArray(parsed.shots) ? parsed.shots : [];
-  const detectedShots: ShotPoint[] = rawShots.map((s, idx) => {
-    const pixelX = Math.round(s.x);
-    const pixelY = Math.round(s.y);
+  const rawShots: any[] = Array.isArray(parsed.shots) ? parsed.shots : [];
+  const detectedShots: ShotPoint[] = rawShots.map((s: any, idx: number) => {
+    const pixelX = toCanvasCoord(s.x, centerX);
+    const pixelY = toCanvasCoord(s.y, centerY);
     const scoreResult = calculateShotScore(pixelX, pixelY, calibration);
 
     return {
