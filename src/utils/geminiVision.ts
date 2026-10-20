@@ -182,7 +182,11 @@ CRITICAL INSTRUCTIONS:
   };
 
   for (const model of candidateModels) {
+    let timeoutId: any;
     try {
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), 18000); // 18초 초과 시 온디바이스 폴백
+
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -190,7 +194,9 @@ CRITICAL INSTRUCTIONS:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -205,7 +211,12 @@ CRITICAL INSTRUCTIONS:
       candidateText = resultData?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (candidateText) break; // 성공 시 루프 탈출
     } catch (e: any) {
-      lastError = e;
+      if (timeoutId) clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        lastError = new Error(`Gemini (${model}) 응답 시간 초과 (18초)`);
+      } else {
+        lastError = e;
+      }
     }
   }
 

@@ -62,6 +62,7 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => getStoredGeminiApiKey());
   const [toast, setToast] = useState<string | null>(null);
+  const [isAwaitingModeSelection, setIsAwaitingModeSelection] = useState<boolean>(false);
 
   // 로컬 저장소 세션 히스토리
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>(() => {
@@ -103,6 +104,7 @@ export const App: React.FC = () => {
       setLoadingMessage('표준 샘플 표적지 생성 중...');
       setCurrentFile(null);
       setActivePresetId(preset.id);
+      setIsAwaitingModeSelection(false);
       const generatedUrl = await generateSampleTargetImage(preset);
       const result = await processTargetImage(generatedUrl, preset.shotOffsetsMm);
 
@@ -173,11 +175,26 @@ export const App: React.FC = () => {
     [geminiApiKey]
   );
 
-  // 파일 업로드 핸들러
+  // 파일 업로드 핸들러: [프로세스 개편] 사진 먼저 등록 -> 사격 목표 발수/유형 선택 순서
   const handleFileUpload = async (file: File) => {
     setCurrentFile(file);
     setActivePresetId('');
-    await executeAnalysis(file, targetMode, targetShotCount);
+    setSelectedShotId(null);
+
+    // 1단계: 사진을 즉시 캔버스에 프리뷰로 표시
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (dataUrl) {
+        setImageUrl(dataUrl);
+        setShots([]); // 이전 핀 초기화하여 깨끗한 표적지 사진 표시
+      }
+    };
+    reader.readAsDataURL(file);
+
+    // 2단계 모드 선택 대기 상태 활성화
+    setIsAwaitingModeSelection(true);
+    showToast('📸 사진 등록 완료! [2단계] 사격 목표 발수를 선택해주세요.');
   };
 
   // 수동 AI 정밀 재분석 트리거
@@ -186,12 +203,14 @@ export const App: React.FC = () => {
       showToast('분석할 표적지 사진이 없습니다.');
       return;
     }
+    setIsAwaitingModeSelection(false);
     await executeAnalysis(currentFile, targetMode, targetShotCount, true);
   };
 
-  // 사격 모드 변경 핸들러 (업로드된 파일이 있을 경우 즉시 새 발수로 자동 재분석)
+  // 사격 모드 변경 핸들러 (사진 등록 후 발수 선택 시 즉시 정밀 분석 실행)
   const handleModeChange = async (newMode: TargetMode) => {
     setTargetMode(newMode);
+    setIsAwaitingModeSelection(false);
 
     let newCount = 10;
     if (newMode === '10shots') newCount = 10;
@@ -203,6 +222,8 @@ export const App: React.FC = () => {
 
     if (currentFile) {
       await executeAnalysis(currentFile, newMode, newCount);
+    } else {
+      showToast(`'${newMode === 'blank' ? '백지 사격' : (newCount > 0 ? newCount + '발' : '자유 발수')}' 모드가 선택되었습니다. 표적지 사진을 먼저 등록해주세요.`);
     }
   };
 
@@ -298,7 +319,65 @@ export const App: React.FC = () => {
           onOpenSettings={() => setIsSettingsOpen(true)}
           onTriggerAiAnalysis={handleTriggerAiAnalysis}
           hasFileToAnalyze={!!currentFile}
+          isAwaitingModeSelection={isAwaitingModeSelection}
         />
+
+        {/* 2단계 발수 선택 대기 안내 배너 */}
+        {isAwaitingModeSelection && !isLoading && (
+          <div className="bg-gradient-to-r from-red-500/10 via-amber-500/10 to-indigo-500/10 border-2 border-red-500 rounded-3xl p-4 flex flex-col md:flex-row items-center justify-between gap-3 shadow-lg shadow-red-500/10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-red-600 text-white font-black flex items-center justify-center text-base shadow-md shadow-red-500/30 flex-shrink-0 animate-bounce">
+                2
+              </div>
+              <div>
+                <p className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>사격 목표 발수 / 유형을 선택하세요</span>
+                  <span className="text-xs bg-red-600 text-white px-2 py-0.5 rounded-full font-bold">선택 즉시 정밀 분석</span>
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  📸 표적지 사진 등록 완료! 이 표적지에 몇 발을 사격하셨나요?
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
+              <button
+                type="button"
+                onClick={() => handleModeChange('10shots')}
+                className="flex-1 md:flex-none px-3.5 py-2.5 bg-white dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black shadow-sm active:scale-95 transition text-slate-800 dark:text-slate-100"
+              >
+                🎯 10발
+              </button>
+              <button
+                type="button"
+                onClick={() => handleModeChange('15shots')}
+                className="flex-1 md:flex-none px-3.5 py-2.5 bg-white dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black shadow-sm active:scale-95 transition text-slate-800 dark:text-slate-100"
+              >
+                🔥 15발
+              </button>
+              <button
+                type="button"
+                onClick={() => handleModeChange('20shots')}
+                className="flex-1 md:flex-none px-3.5 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black shadow-md shadow-red-500/25 active:scale-95 transition"
+              >
+                ⚡ 20발 (추천)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleModeChange('30shots')}
+                className="flex-1 md:flex-none px-3.5 py-2.5 bg-white dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black shadow-sm active:scale-95 transition text-slate-800 dark:text-slate-100"
+              >
+                🏆 30발
+              </button>
+              <button
+                type="button"
+                onClick={() => handleModeChange('blank')}
+                className="flex-1 md:flex-none px-3.5 py-2.5 bg-slate-900 dark:bg-slate-700 text-white rounded-xl text-xs font-black shadow-sm active:scale-95 transition"
+              >
+                📄 백지 사격
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 로딩 인디케이터 */}
         {isLoading ? (

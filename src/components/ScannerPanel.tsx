@@ -20,6 +20,7 @@ interface ScannerPanelProps {
   onOpenSettings: () => void;
   onTriggerAiAnalysis?: () => void;
   hasFileToAnalyze: boolean;
+  isAwaitingModeSelection?: boolean;
 }
 
 export const ScannerPanel: React.FC<ScannerPanelProps> = ({
@@ -31,6 +32,7 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
   onOpenSettings,
   onTriggerAiAnalysis,
   hasFileToAnalyze,
+  isAwaitingModeSelection = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -44,43 +46,59 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
 
   return (
     <div className="bg-white dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-4 md:p-5 flex flex-col gap-4 shadow-xl shadow-slate-200/40 dark:shadow-none transition-colors">
-      {/* 1. 최상단: 메인 카메라 & 앨범 빅 터치 액션 버튼 (모바일 높이 52px 보장) */}
-      <div className="grid grid-cols-2 gap-3">
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handleFileChange}
-        />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleFileChange}
-        />
+      {/* 1. [STEP 1] 표적지 사진 촬영 / 불러오기 */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between text-xs px-1">
+          <span className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+            <span className="w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-[11px] font-black">1</span>
+            <span>표적지 사진 등록 (먼저 사진을 올려주세요)</span>
+          </span>
+          {hasFileToAnalyze ? (
+            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+              ✓ 사진 등록 완료
+            </span>
+          ) : (
+            <span className="text-[11px] text-slate-400 font-medium">카메라 촬영 또는 앨범 선택</span>
+          )}
+        </div>
 
-        {/* 1) 실시간 카메라 촬영 버튼 (메인 강조) */}
-        <button
-          onClick={() => cameraInputRef.current?.click()}
-          disabled={isLoading}
-          className="h-14 md:h-16 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 active:scale-[0.98] text-white rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2.5 shadow-lg shadow-red-500/25 transition-all disabled:opacity-50"
-        >
-          <Camera className="w-5 h-5 stroke-[2.5]" />
-          <span>표적 카메라 촬영</span>
-        </button>
+        <div className="grid grid-cols-2 gap-3">
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileChange}
+          />
 
-        {/* 2) 앨범에서 사진 선택 버튼 */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isLoading}
-          className="h-14 md:h-16 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-[0.98] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-sm md:text-base flex items-center justify-center gap-2.5 transition-all disabled:opacity-50"
-        >
-          <ImageIcon className="w-5 h-5 text-slate-500 dark:text-slate-400 stroke-[2.2]" />
-          <span>사진 불러오기</span>
-        </button>
+          {/* 1) 실시간 카메라 촬영 버튼 (메인 강조) */}
+          <button
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={isLoading}
+            className="h-14 md:h-16 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 active:scale-[0.98] text-white rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2.5 shadow-lg shadow-red-500/25 transition-all disabled:opacity-50"
+          >
+            <Camera className="w-5 h-5 stroke-[2.5]" />
+            <span>표적 카메라 촬영</span>
+          </button>
+
+          {/* 2) 앨범에서 사진 선택 버튼 */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+            className="h-14 md:h-16 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-[0.98] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-sm md:text-base flex items-center justify-center gap-2.5 transition-all disabled:opacity-50"
+          >
+            <ImageIcon className="w-5 h-5 text-slate-500 dark:text-slate-400 stroke-[2.2]" />
+            <span>사진 불러오기</span>
+          </button>
+        </div>
       </div>
 
       {/* 2. AI 정밀 분석 엔진 상태 바 & 실행 버튼 */}
@@ -107,7 +125,7 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
               className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-black flex items-center gap-1 shadow-md shadow-indigo-500/20 transition-all disabled:opacity-50"
             >
               <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>AI 정밀 재분석</span>
+              <span>AI 재분석</span>
             </button>
           )}
 
@@ -124,13 +142,28 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
         </div>
       </div>
 
-      {/* 3. 사격 모드 선택 세그먼트 (10발 / 20발 / 자유 / 백지) */}
-      <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+      {/* 3. [STEP 2] 사격 목표 발수 / 유형 선택 (사진 등록 후 선택 시 즉시 분석) */}
+      <div className={`flex flex-col gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 rounded-2xl p-2 transition-all ${
+        isAwaitingModeSelection
+          ? 'bg-red-500/10 border-2 border-red-500 shadow-lg shadow-red-500/20'
+          : ''
+      }`}>
         <div className="flex items-center justify-between text-xs px-1">
-          <span className="font-bold text-slate-700 dark:text-slate-300">
-            사격 목표 발수 / 유형
+          <span className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-black ${
+              isAwaitingModeSelection ? 'bg-red-600 text-white animate-bounce' : 'bg-slate-700 text-white'
+            }`}>2</span>
+            <span>사격 목표 발수 / 유형 선택</span>
           </span>
-          <span className="text-[11px] text-slate-400 font-medium">선택 후 사진 촬영/업로드</span>
+          <span className={`text-[11px] ${
+            isAwaitingModeSelection ? 'text-red-600 dark:text-red-400 font-extrabold animate-pulse' : 'text-slate-400 font-medium'
+          }`}>
+            {isAwaitingModeSelection
+              ? '👉 발수를 터치하시면 즉시 정밀 분석됩니다!'
+              : hasFileToAnalyze
+              ? '터치 시 해당 발수로 즉시 재분석'
+              : '사진 등록 후 발수 선택 시 분석 실행'}
+          </span>
         </div>
         {/* 메인 정규 발수: 10발, 15발, 20발, 30발 */}
         <div className="grid grid-cols-4 gap-1.5 bg-slate-100 dark:bg-slate-800/90 p-1 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
