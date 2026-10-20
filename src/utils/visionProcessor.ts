@@ -50,49 +50,101 @@ export async function processTargetImage(
   const imageData = ctx.getImageData(0, 0, size, size);
   const data = imageData.data;
 
-  // 3. 표적지 중앙 흑점(Bullseye) 검출 (하단 코치 메모 영역 y > 60% 배제)
-  const blackPixels: Array<{ x: number; y: number }> = [];
-  const minSearchX = Math.floor(size * 0.15);
-  const maxSearchX = Math.floor(size * 0.85);
-  const minSearchY = Math.floor(size * 0.10);
-  const maxSearchY = Math.floor(size * 0.62); // 하단 38% 코치 메모 글씨(잘했어요 등) 원천 배제
-
-  for (let py = minSearchY; py < maxSearchY; py += 2) {
-    for (let px = minSearchX; px < maxSearchX; px += 2) {
+  // 3. 표적지 중앙 단일 연결 흑점(Bullseye) 초정밀 검출 (BFS Flood-Fill)
+  // 어두운 무채색 픽셀 마스크 생성 (2px 다운샘플링 그리드: 400x400)
+  const gSize = size / 2; // 400
+  const isDarkGrid = new Uint8Array(gSize * gSize);
+  for (let gy = 0; gy < gSize; gy++) {
+    for (let gx = 0; gx < gSize; gx++) {
+      const px = gx * 2;
+      const py = gy * 2;
       const idx = (py * size + px) * 4;
       const r = data[idx];
       const g = data[idx + 1];
       const b = data[idx + 2];
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      // 흑점 영역 판단 (어두운 무채색 픽셀)
-      if (lum < 52 && Math.abs(r - g) < 16 && Math.abs(g - b) < 16) {
-        blackPixels.push({ x: px, y: py });
+      if (lum < 58 && Math.abs(r - g) < 20 && Math.abs(g - b) < 20) {
+        isDarkGrid[gy * gSize + gx] = 1;
+      }
+    }
+  }
+
+  // 캔버스 중앙(200, 200)에서 가장 가까운 흑점 시드(Seed) 포인트 탐색
+  const centerG = Math.floor(gSize / 2);
+  let seedGx = -1;
+  let seedGy = -1;
+  let minSeedDist = Infinity;
+
+  // 중앙 60% 영역 내에서 시드 포인트 탐색
+  const searchLimit = Math.floor(gSize * 0.35);
+  for (let gy = centerG - searchLimit; gy <= centerG + searchLimit; gy++) {
+    for (let gx = centerG - searchLimit; gx <= centerG + searchLimit; gx++) {
+      if (gy >= 0 && gy < gSize && gx >= 0 && gx < gSize) {
+        if (isDarkGrid[gy * gSize + gx] === 1) {
+          const d = Math.hypot(gx - centerG, gy - centerG);
+          if (d < minSeedDist) {
+            minSeedDist = d;
+            seedGx = gx;
+            seedGy = gy;
+          }
+        }
       }
     }
   }
 
   let centerX = size / 2;
-  let centerY = Math.floor(size * 0.45); // 통상 표적지 상중단 중심
-  let blackRadiusPx = 95; // 800px 캔버스 기준 표준 반경 (~6.2 px/mm)
+  let centerY = size / 2;
+  let blackRadiusPx = 244; // 기본 800px 샘플 표적지 규격 (~16.0 px/mm)
   let targetType: 'standard' | 'blank' = 'standard';
 
-  if (blackPixels.length > 500) {
-    // 흑점 원형 외곽선 백분위수 대칭 피팅 (중앙에 구멍이 크게 뚫려도 중심점이 흔들리지 않음)
-    const xs = blackPixels.map((p) => p.x).sort((a, b) => a - b);
-    const ys = blackPixels.map((p) => p.y).sort((a, b) => a - b);
-    const minX = xs[Math.floor(xs.length * 0.05)];
-    const maxX = xs[Math.floor(xs.length * 0.95)];
-    const minY = ys[Math.floor(ys.length * 0.05)];
-    const maxY = ys[Math.floor(ys.length * 0.95)];
+  // 시드 포인트를 찾았고 중앙과 가까운 경우 단일 연결 흑점 BFS 탐색
+  if (seedGx !== -1 && minSeedDist < gSize * 0.30) {
+    const visited = new Uint8Array(gSize * gSize);
+    const queue = [seedGy * gSize + seedGx];
+    visited[seedGy * gSize + seedGx] = 1;
 
-    const boxCenterX = (minX + maxX) / 2;
-    const boxCenterY = (minY + maxY) / 2;
-    const boxRadius = ((maxX - minX) + (maxY - minY)) / 4;
+    let minGx = seedGx;
+    let maxGx = seedGx;
+    let minGy = seedGy;
+    let maxGy = seedGy;
+    let componentSize = 0;
 
-    if (boxRadius >= 60 && boxRadius <= 160) {
-      centerX = Math.round(boxCenterX);
-      centerY = Math.round(boxCenterY);
-      blackRadiusPx = Math.round(boxRadius);
+    let head = 0;
+    while (head < queue.length) {
+      const curr = queue[head++];
+      const cgx = curr % gSize;
+      const cgy = Math.floor(curr / gSize);
+      componentSize++;
+
+      if (cgx < minGx) minGx = cgx;
+      if (cgx > maxGx) maxGx = cgx;
+      if (cgy < minGy) minGy = cgy;
+      if (cgy > maxGy) maxGy = cgy;
+
+      // 4방향 + 총알 구멍 관통을 위한 2칸 점프 이웃 탐색
+      const neighbors = [
+        curr - 1, curr + 1, curr - gSize, curr + gSize,
+        curr - 2, curr + 2, curr - gSize * 2, curr + gSize * 2,
+      ];
+
+      for (const n of neighbors) {
+        if (n >= 0 && n < gSize * gSize && !visited[n] && isDarkGrid[n] === 1) {
+          visited[n] = 1;
+          queue.push(n);
+        }
+      }
+    }
+
+    // 800x800 원래 좌표계로 스케일 복원
+    const foundCenterX = Math.round(((minGx + maxGx) / 2) * 2);
+    const foundCenterY = Math.round(((minGy + maxGy) / 2) * 2);
+    const foundRadius = Math.round((((maxGx - minGx) + (maxGy - minGy)) / 4) * 2);
+
+    // 반경 40px(실제 원거리 촬영) ~ 340px(샘플 프리셋 및 근접 촬영) 수용
+    if (componentSize > 200 && foundRadius >= 40 && foundRadius <= 340) {
+      centerX = foundCenterX;
+      centerY = foundCenterY;
+      blackRadiusPx = foundRadius;
       targetType = 'standard';
     } else {
       targetType = 'blank';
