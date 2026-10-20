@@ -359,15 +359,20 @@ export async function processTargetImage(
       centerY = mainClusterY;
       calibration.centerX = centerX;
       calibration.centerY = centerY;
-
-      // 3. 28mm 사격 유효 반경(ROI) 밖의 상하단 잔여 메모 잉크 원천 배제
-      const maxRoiPx = 28.0 * pxPerMm;
-      validComponents = validComponents.filter((comp) => {
-        const avgX = comp.reduce((acc, p) => acc + p.x, 0) / comp.length;
-        const avgY = comp.reduce((acc, p) => acc + p.y, 0) / comp.length;
-        return Math.hypot(avgX - centerX, avgY - centerY) <= maxRoiPx;
-      });
     }
+
+    // [엄격한 물리적 유효 사격 구역(ROI) 필터링 - 표준/백지 공통 적용]
+    // ISSF 10m 공기소총: 1점 링 외곽 직경 45.5mm (반경 22.75mm)
+    // 외곽의 연도("2011년"), 날짜("10/18"), 우상단 점수표, 하단 코치 메모는 중심으로부터 반경 35mm~70mm 이상 떨어져 있으므로 100% 원천 배제
+    const maxRoiPx = targetType === 'standard'
+      ? blackRadiusPx * 1.68 // 흑점(4점 링) 반경의 1.68배 = 약 25.6mm (1점 링 + 탄환 반경 여유)
+      : 26.0 * pxPerMm;
+
+    validComponents = validComponents.filter((comp) => {
+      const avgX = comp.reduce((acc, p) => acc + p.x, 0) / comp.length;
+      const avgY = comp.reduce((acc, p) => acc + p.y, 0) / comp.length;
+      return Math.hypot(avgX - centerX, avgY - centerY) <= maxRoiPx;
+    });
 
     const maxAllowedShots = targetCount > 0 ? targetCount : 10;
     const candidateShots: Array<{ x: number; y: number }> = [];

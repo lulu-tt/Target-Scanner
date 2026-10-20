@@ -8,7 +8,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { TargetCalibration, ShotPoint } from '../types/target';
 import { ISSF_AIR_RIFLE, calculateShotScore } from '../utils/issfSpecs';
-import { ZoomIn, ZoomOut, RotateCcw, Eye, EyeOff, Crosshair, Target, Trash2, Sparkles, Layers, Sliders, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Eye, EyeOff, Crosshair, Target, Trash2, Sparkles, Layers, Sliders, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Check, Tag } from 'lucide-react';
 
 interface TargetCanvasProps {
   imageUrl: string;
@@ -46,6 +46,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
   // 토글 옵션
   const [showRings, setShowRings] = useState(true);
   const [showShots, setShowShots] = useState(true);
+  const [showScoreLabels, setShowScoreLabels] = useState(true);
   const [showMpi, setShowMpi] = useState(true);
   const [isCalibrating, setIsCalibrating] = useState(false);
 
@@ -185,32 +186,41 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
         ctx.fillStyle = '#FFFFFF';
         ctx.fill();
 
-        // 탄환 번호 및 소수점 점수 뱃지 (시인성 강화)
-        ctx.fillStyle = isSelected ? '#EF4444' : '#0F172A';
-        const labelText = `#${shot.shotNumber} (${shot.score.toFixed(1)})`;
-        ctx.font = 'bold 13px sans-serif';
-        const textWidth = ctx.measureText(labelText).width;
+        // 탄환 번호 및 소수점 점수 뱃지 (시인성 강화 - 토글 지원)
+        if (showScoreLabels) {
+          ctx.fillStyle = isSelected ? '#EF4444' : '#0F172A';
+          const labelText = `#${shot.shotNumber} (${shot.score.toFixed(1)})`;
+          ctx.font = 'bold 13px sans-serif';
+          const textWidth = ctx.measureText(labelText).width;
 
-        const badgeX = currentX - textWidth / 2 - 8;
-        const badgeY = currentY - pelletPxRadius - 26;
+          const badgeX = currentX - textWidth / 2 - 8;
+          const badgeY = currentY - pelletPxRadius - 26;
 
-        ctx.beginPath();
-        ctx.roundRect(badgeX, badgeY, textWidth + 16, 22, 6);
-        ctx.fill();
+          ctx.beginPath();
+          ctx.roundRect(badgeX, badgeY, textWidth + 16, 22, 6);
+          ctx.fill();
 
-        ctx.strokeStyle = isSelected ? '#FFFFFF' : 'rgba(255,255,255,0.25)';
-        ctx.lineWidth = 1.2;
-        ctx.stroke();
+          ctx.strokeStyle = isSelected ? '#FFFFFF' : 'rgba(255,255,255,0.25)';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
 
-        ctx.fillStyle = '#FFFFFF';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(labelText, currentX, badgeY + 11);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(labelText, currentX, badgeY + 11);
+        } else {
+          // 점수 뱃지 OFF 시: 탄환 링 내부에 간결한 번호만 미니멀 표시 (탄착 구멍 가림 방지)
+          ctx.fillStyle = isSelected ? '#FFFFFF' : '#0F172A';
+          ctx.font = 'bold 11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`${shot.shotNumber}`, currentX, currentY - 0.5);
+        }
 
         ctx.restore();
       });
     }
-  }, [bgImage, calibration, showRings, showShots, showMpi, shots, selectedShotId, draggingShotId, dragCurrentPos, mpi]);
+  }, [bgImage, calibration, showRings, showShots, showScoreLabels, showMpi, shots, selectedShotId, draggingShotId, dragCurrentPos, mpi]);
 
   useEffect(() => {
     renderCanvas();
@@ -476,9 +486,21 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
                 ? 'bg-amber-500 text-white shadow-sm'
                 : 'bg-white dark:bg-slate-700 text-slate-400'
             }`}
-            title="탄착 핀 및 채점 표시 토글"
+            title="탄착 핀 표시 토글"
           >
             <Target className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => setShowScoreLabels(!showScoreLabels)}
+            className={`w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-xl font-bold transition active:scale-95 ${
+              showScoreLabels
+                ? 'bg-emerald-500 text-white shadow-sm'
+                : 'bg-white dark:bg-slate-700 text-slate-400'
+            }`}
+            title="탄착 점수 라벨(배지) ON/OFF 토글"
+          >
+            <Tag className="w-4 h-4" />
           </button>
 
           <button

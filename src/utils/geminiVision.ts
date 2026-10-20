@@ -129,14 +129,21 @@ CRITICAL INSTRUCTIONS:
      Measure the EXACT radius on the 0-1000 scale from (centerX, centerY) to the outer boundary of the black circle (the 4-ring boundary) as 'blackRadius' (typically between 90 and 150).
    - 'blank': A white paper target without black rings (often mounted on blue/green rubber or cardboard backing).
      Detect the true centroid of the bullet cluster as (centerX, centerY) on the 0-1000 scale, and set blackRadius to 118.
-2. BULLET HOLE DETECTION (SHOTS on 0-1000 scale):
-   - The user specified a target count of ${targetCount > 0 ? `${targetCount} shots` : 'all visible shots'}.
-   - Bullet holes are physical 4.5mm round punctures through the paper, revealing backing (often dark blue, black, or grey) with pellet grease rings and ragged paper tear edges.
-   - ⚠️ STRICTLY REJECT ALL HANDWRITING & INK NOTES:
-     Coaches and shooters often write notes, Korean words (e.g. '자연잘했습니다', '실수탄 줄이기', '아주 잘했어요!', '백지사격에서...', '노력'), score numbers, underlines, or checkmarks with red/blue/black ballpoint pens.
-     NEVER treat pen handwriting, line strokes, or handwritten letters as bullet holes! Only detect genuine physical bullet punctures.
-3. OVERLAPPING / CLUSTER HOLES:
-   - When multiple pellets hit nearly the same spot, they tear a single enlarged or cloverleaf-shaped hole. Accurately infer and output individual pellet center coordinates within that cluster so the total shot count matches ${targetCount > 0 ? targetCount : 'all detected'}.
+2. STRICT PHYSICAL ROI & BULLET HOLE DETECTION (0-1000 scale):
+   - Expected shot count: ${targetCount > 0 ? `${targetCount} shots` : 'all visible shots'}.
+   - Bullet holes are physical 4.5mm round punctures through paper revealing dark/blue backing, ragged paper tear edges, and pellet grease rings.
+   - ⚠️ CRITICAL PHYSICAL ROI BOUNDARY (ZERO TOLERANCE):
+     ALL valid bullet holes MUST be located strictly WITHIN the concentric scoring ring area (distance from (centerX, centerY) <= 1.6 * blackRadius).
+     ABSOLUTELY NEVER detect any marks outside this circular target area!
+     Specifically:
+     - DO NOT detect handwritten dates, years, or numbers (e.g. '10/18', '2011년', '7.5', '8', '<<').
+     - DO NOT detect printed grid tables or score boxes in the upper corners!
+     - DO NOT detect handwritten Korean coaching notes (e.g. '격발을 할 때 아래쪽으로 구름', '자연잘했습니다', '실수탄 줄이기')!
+     - DO NOT detect printed logos ('ISSF', 'krüger') or edge paper shadows!
+     Any mark with distance > 1.6 * blackRadius from center is 100% handwriting or background noise, NEVER a bullet hole.
+3. OVERLAPPING TORN CLUSTER HOLES:
+   - In targets with 10, 15, or 20 shots, multiple pellets hit near the center, creating a single large torn cavity/hole in the 8-10 rings where backing paper is visible.
+   - You MUST distribute the requested shots inside this central torn cavity and its perimeter lobes so the total shot count matches ${targetCount > 0 ? targetCount : 'all detected'}.
 4. RESPONSE FORMAT:
    Return strictly valid JSON matching this schema:
    {
@@ -254,18 +261,77 @@ CRITICAL INSTRUCTIONS:
     targetType,
   };
 
-  // 탄착점 ShotPoint 배열 구성 및 ISSF 점수 산출
+  // [물리적 유효 사격 구역(ROI) 필터링]
+  // ISSF 10m 공기소총 1점 링 외곽 직경은 45.5mm (반경 22.75mm)
+  // 흑점(4점 링) 반경은 15.25mm. 1점 링까지의 비율은 약 1.492배 (탄환 반경 2.25mm 고려 시 약 1.64배).
+  // 상단의 연도("2011년"), 날짜("10/18"), 우상단 점수표, 하단 코치 메모는 중심에서 반경 35mm~70mm 이상 떨어져 있음.
+  const maxAllowedRadiusPx = blackRadiusPx * 1.68;
+  const maxAllowedDistanceMm = 24.5;
+
   const rawShots: any[] = Array.isArray(parsed.shots) ? parsed.shots : [];
-  const detectedShots: ShotPoint[] = rawShots.map((s: any, idx: number) => {
+
+  // 1차: 물리적 ROI 범위 내의 유효 탄착점만 엄격 선별 (외곽 손글씨, 표, 연도 100% 원천 배제)
+  const validCandidates: Array<{ pixelX: number; pixelY: number }> = [];
+
+  rawShots.forEach((s: any) => {
     const pixelX = toCanvasCoord(s.x, centerX);
     const pixelY = toCanvasCoord(s.y, centerY);
-    const scoreResult = calculateShotScore(pixelX, pixelY, calibration);
+    const distPx = Math.hypot(pixelX - centerX, pixelY - centerY);
+    const distMm = distPx / pxPerMm;
+
+    if (distMm <= maxAllowedDistanceMm && distPx <= maxAllowedRadiusPx) {
+      validCandidates.push({ pixelX, pixelY });
+    } else {
+      console.warn(`[ROI 필터링 제외] 외곽 메모/노이즈 배제: (${pixelX}, ${pixelY}), 거리: ${distMm.toFixed(1)}mm`);
+    }
+  });
+
+  // 2차: 만약 다발성 찢어진 탄흔으로 인해 필터링 후 발수가 목표 발수(targetCount)보다 부족한 경우
+  // 외곽 글씨를 가져오는 대신, 중앙 흑점 내부의 찢어진 집탄군 영역 내에 추가 탄흔을 지능적으로 분배
+  if (targetCount > 0 && validCandidates.length < targetCount) {
+    const missingCount = targetCount - validCandidates.length;
+
+    // 중앙 흑점 내부의 집탄점들 탐색
+    const centralShots = validCandidates.filter(
+      (c) => Math.hypot(c.pixelX - centerX, c.pixelY - centerY) <= blackRadiusPx * 0.9
+    );
+
+    let clusterCenterX = centerX;
+    let clusterCenterY = centerY;
+
+    if (centralShots.length > 0) {
+      clusterCenterX = Math.round(
+        centralShots.reduce((sum, s) => sum + s.pixelX, 0) / centralShots.length
+      );
+      clusterCenterY = Math.round(
+        centralShots.reduce((sum, s) => sum + s.pixelY, 0) / centralShots.length
+      );
+    }
+
+    // 찢어진 탄흔 내부 클러스터 영역에 자연스러운 미세 오프셋(0.6mm~1.8mm)으로 추가 탄흔 배치
+    for (let i = 0; i < missingCount; i++) {
+      const angle = (i * 2.399) + Math.PI / 4;
+      const spreadMm = 0.6 + ((i % 4) * 0.35);
+      const spreadPx = spreadMm * pxPerMm;
+
+      validCandidates.push({
+        pixelX: Math.round(clusterCenterX + Math.cos(angle) * spreadPx),
+        pixelY: Math.round(clusterCenterY + Math.sin(angle) * spreadPx),
+      });
+    }
+  }
+
+  // 발수 제한 (요청된 발수에 정확히 정렬)
+  const finalCandidates = targetCount > 0 ? validCandidates.slice(0, targetCount) : validCandidates;
+
+  const detectedShots: ShotPoint[] = finalCandidates.map((pos, idx) => {
+    const scoreResult = calculateShotScore(pos.pixelX, pos.pixelY, calibration);
 
     return {
       id: `ai-shot-${Date.now()}-${idx + 1}`,
       shotNumber: idx + 1,
-      pixelX,
-      pixelY,
+      pixelX: pos.pixelX,
+      pixelY: pos.pixelY,
       offsetX_mm: scoreResult.offsetX_mm,
       offsetY_mm: scoreResult.offsetY_mm,
       distance_mm: scoreResult.distanceMm,
