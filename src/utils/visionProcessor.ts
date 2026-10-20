@@ -50,12 +50,15 @@ export async function processTargetImage(
   const imageData = ctx.getImageData(0, 0, size, size);
   const data = imageData.data;
 
-  // 3. 표적지 중앙 흑점(Bullseye) 검출
+  // 3. 표적지 중앙 흑점(Bullseye) 검출 (하단 코치 메모 영역 y > 60% 배제)
   const blackPixels: Array<{ x: number; y: number }> = [];
-  const searchMargin = Math.floor(size * 0.15); // 중앙 70% 영역 집중 탐색
+  const minSearchX = Math.floor(size * 0.15);
+  const maxSearchX = Math.floor(size * 0.85);
+  const minSearchY = Math.floor(size * 0.10);
+  const maxSearchY = Math.floor(size * 0.62); // 하단 38% 코치 메모 글씨(잘했어요 등) 원천 배제
 
-  for (let py = searchMargin; py < size - searchMargin; py += 2) {
-    for (let px = searchMargin; px < size - searchMargin; px += 2) {
+  for (let py = minSearchY; py < maxSearchY; py += 2) {
+    for (let px = minSearchX; px < maxSearchX; px += 2) {
       const idx = (py * size + px) * 4;
       const r = data[idx];
       const g = data[idx + 1];
@@ -69,27 +72,27 @@ export async function processTargetImage(
   }
 
   let centerX = size / 2;
-  let centerY = size / 2;
-  let blackRadiusPx = 105; // 800px 캔버스 기준 기본값 (~6.9 px/mm)
+  let centerY = Math.floor(size * 0.45); // 통상 표적지 상중단 중심
+  let blackRadiusPx = 95; // 800px 캔버스 기준 표준 반경 (~6.2 px/mm)
   let targetType: 'standard' | 'blank' = 'standard';
 
   if (blackPixels.length > 500) {
     // 흑점 원형 외곽선 백분위수 대칭 피팅 (중앙에 구멍이 크게 뚫려도 중심점이 흔들리지 않음)
     const xs = blackPixels.map((p) => p.x).sort((a, b) => a - b);
     const ys = blackPixels.map((p) => p.y).sort((a, b) => a - b);
-    const minX = xs[Math.floor(xs.length * 0.04)];
-    const maxX = xs[Math.floor(xs.length * 0.96)];
-    const minY = ys[Math.floor(ys.length * 0.04)];
-    const maxY = ys[Math.floor(ys.length * 0.96)];
+    const minX = xs[Math.floor(xs.length * 0.05)];
+    const maxX = xs[Math.floor(xs.length * 0.95)];
+    const minY = ys[Math.floor(ys.length * 0.05)];
+    const maxY = ys[Math.floor(ys.length * 0.95)];
 
     const boxCenterX = (minX + maxX) / 2;
     const boxCenterY = (minY + maxY) / 2;
     const boxRadius = ((maxX - minX) + (maxY - minY)) / 4;
 
-    if (boxRadius >= 60 && boxRadius <= 260) {
+    if (boxRadius >= 60 && boxRadius <= 160) {
       centerX = Math.round(boxCenterX);
       centerY = Math.round(boxCenterY);
-      blackRadiusPx = boxRadius;
+      blackRadiusPx = Math.round(boxRadius);
       targetType = 'standard';
     } else {
       targetType = 'blank';

@@ -12,7 +12,7 @@ import { TargetCalibration, ShotPoint, SavedSession, TargetMode } from './types/
 import { SAMPLE_PRESETS, SamplePreset, generateSampleTargetImage } from './utils/targetSamples';
 import { processTargetImage, VisionProcessResult } from './utils/visionProcessor';
 import { analyzeTargetWithGemini, getStoredGeminiApiKey } from './utils/geminiVision';
-import { calculateGroupingStats } from './utils/issfSpecs';
+import { calculateGroupingStats, calculateShotScore } from './utils/issfSpecs';
 import { Header } from './components/Header';
 import { ScannerPanel } from './components/ScannerPanel';
 import { TargetCanvas } from './components/TargetCanvas';
@@ -250,6 +250,23 @@ export const App: React.FC = () => {
     showToast('세션 기록이 삭제되었습니다.');
   };
 
+  // 과녁 중심(초점) 및 가상선 보정 핸들러 (중심/반경 변경 시 모든 샷 점수 실시간 재계산)
+  const handleCalibrationChange = (newCalib: TargetCalibration) => {
+    setCalibration(newCalib);
+    setShots((prev) =>
+      prev.map((shot) => {
+        const scoreData = calculateShotScore(shot.pixelX, shot.pixelY, newCalib);
+        return {
+          ...shot,
+          offsetX_mm: scoreData.offsetX_mm,
+          offsetY_mm: scoreData.offsetY_mm,
+          distance_mm: scoreData.distanceMm,
+          score: scoreData.score,
+        };
+      })
+    );
+  };
+
   // 초기 마운트 시 1번 프리셋 자동 로드
   useEffect(() => {
     handleSelectPreset(SAMPLE_PRESETS[0]);
@@ -301,6 +318,7 @@ export const App: React.FC = () => {
               <TargetCanvas
                 imageUrl={imageUrl}
                 calibration={calibration}
+                onCalibrationChange={handleCalibrationChange}
                 shots={shots}
                 selectedShotId={selectedShotId}
                 onShotsChange={setShots}

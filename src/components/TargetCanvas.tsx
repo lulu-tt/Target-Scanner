@@ -8,11 +8,12 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { TargetCalibration, ShotPoint } from '../types/target';
 import { ISSF_AIR_RIFLE, calculateShotScore } from '../utils/issfSpecs';
-import { ZoomIn, ZoomOut, RotateCcw, Eye, EyeOff, Crosshair, Target, Trash2, Sparkles, Layers } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Eye, EyeOff, Crosshair, Target, Trash2, Sparkles, Layers, Sliders, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 
 interface TargetCanvasProps {
   imageUrl: string;
   calibration: TargetCalibration;
+  onCalibrationChange?: (calibration: TargetCalibration) => void;
   shots: ShotPoint[];
   selectedShotId: string | null;
   onShotsChange: (shots: ShotPoint[]) => void;
@@ -24,6 +25,7 @@ interface TargetCanvasProps {
 export const TargetCanvas: React.FC<TargetCanvasProps> = ({
   imageUrl,
   calibration,
+  onCalibrationChange,
   shots,
   selectedShotId,
   onShotsChange,
@@ -45,6 +47,30 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
   const [showRings, setShowRings] = useState(true);
   const [showShots, setShowShots] = useState(true);
   const [showMpi, setShowMpi] = useState(true);
+  const [isCalibrating, setIsCalibrating] = useState(false);
+
+  // 과녁 중심(Bullseye) 및 링 크기 수동 미세조정 핸들러
+  const handleAdjustCenter = (dx: number, dy: number) => {
+    if (!onCalibrationChange) return;
+    const newCalib: TargetCalibration = {
+      ...calibration,
+      centerX: Math.round(calibration.centerX + dx),
+      centerY: Math.round(calibration.centerY + dy),
+    };
+    onCalibrationChange(newCalib);
+  };
+
+  const handleAdjustRadius = (delta: number) => {
+    if (!onCalibrationChange) return;
+    const newRadius = Math.max(40, Math.min(250, calibration.blackRadiusPx + delta));
+    const newPxPerMm = Number((newRadius / ISSF_AIR_RIFLE.BLACK_CIRCLE_RADIUS_MM).toFixed(3));
+    const newCalib: TargetCalibration = {
+      ...calibration,
+      blackRadiusPx: newRadius,
+      pxPerMm: newPxPerMm,
+    };
+    onCalibrationChange(newCalib);
+  };
 
   // 드래그 중인 탄착점 상태
   const [draggingShotId, setDraggingShotId] = useState<string | null>(null);
@@ -467,6 +493,19 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
             MPI
           </button>
 
+          {/* 과녁 중심 & 가상선 초점 미세조정 모드 토글 */}
+          <button
+            onClick={() => setIsCalibrating(!isCalibrating)}
+            className={`w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-xl font-bold transition active:scale-95 ${
+              isCalibrating
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-2 ring-purple-400'
+                : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+            }`}
+            title="과녁 중심 및 가상선 초점 미세조정"
+          >
+            <Sliders className="w-4 h-4" />
+          </button>
+
           {selectedShotId && (
             <button
               onClick={handleDeleteSelected}
@@ -523,9 +562,102 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
         {/* 캔버스 하단 미세 안내 툴팁 */}
         <div className="absolute bottom-2.5 left-2.5 right-2.5 pointer-events-none bg-slate-900/80 dark:bg-black/80 backdrop-blur-md border border-white/10 rounded-xl px-3 py-1.5 text-[11px] font-medium text-slate-200 flex items-center justify-center gap-1.5 shadow-lg">
           <Sparkles className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" />
-          <span className="truncate">핀 터치 후 드래그하여 미세조정 | 빈 곳 터치 시 핀 추가</span>
+          <span className="truncate">핀 터치 드래그 조정 | 툴바 ⚙️(슬라이더)로 과녁 중심 초점 보정</span>
         </div>
       </div>
+
+      {/* 3. 과녁 중심 & 가상선 수동 미세조정 컨트롤러 */}
+      {isCalibrating && (
+        <div className="w-full max-w-[580px] mt-3.5 p-3.5 bg-gradient-to-r from-purple-50 via-indigo-50 to-slate-50 dark:from-purple-950/40 dark:via-indigo-950/30 dark:to-slate-900 border border-purple-200/80 dark:border-purple-900/60 rounded-2xl flex flex-col gap-2.5 text-xs shadow-lg animate-fadeIn">
+          <div className="flex items-center justify-between font-bold text-purple-900 dark:text-purple-200">
+            <span className="flex items-center gap-1.5">
+              <Sliders className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              과녁 중심(초점) & 가상선 미세조정
+            </span>
+            <button
+              onClick={() => setIsCalibrating(false)}
+              className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-black text-xs flex items-center gap-1 shadow-sm transition active:scale-95"
+            >
+              <Check className="w-3 h-3" />
+              <span>보정 완료</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center pt-1">
+            {/* 좌측: 중심 상하좌우 십자 이동 버튼 (1클릭당 2px) */}
+            <div className="flex flex-col items-center gap-1.5 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/40">
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">
+                과녁 중심 좌표: ({calibration.centerX}, {calibration.centerY})
+              </span>
+              <div className="flex flex-col items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleAdjustCenter(0, -2)}
+                  className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-purple-100 dark:bg-slate-700 dark:hover:bg-purple-900/50 flex items-center justify-center text-slate-700 dark:text-slate-200 active:scale-90 transition"
+                  title="과녁 중심 위로 이동"
+                >
+                  <ChevronUp className="w-4 h-4" />
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustCenter(-2, 0)}
+                    className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-purple-100 dark:bg-slate-700 dark:hover:bg-purple-900/50 flex items-center justify-center text-slate-700 dark:text-slate-200 active:scale-90 transition"
+                    title="과녁 중심 좌측으로 이동"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="w-4 h-4 rounded-full bg-amber-400 border-2 border-white dark:border-slate-800 shadow-sm" />
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustCenter(2, 0)}
+                    className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-purple-100 dark:bg-slate-700 dark:hover:bg-purple-900/50 flex items-center justify-center text-slate-700 dark:text-slate-200 active:scale-90 transition"
+                    title="과녁 중심 우측으로 이동"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleAdjustCenter(0, 2)}
+                  className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-purple-100 dark:bg-slate-700 dark:hover:bg-purple-900/50 flex items-center justify-center text-slate-700 dark:text-slate-200 active:scale-90 transition"
+                  title="과녁 중심 아래로 이동"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* 우측: 링 크기(반경) 스케일 미세조정 */}
+            <div className="flex flex-col items-center gap-2 bg-white dark:bg-slate-800 p-3 rounded-xl border border-purple-100 dark:border-purple-900/40 h-full justify-center">
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">
+                가상 링 반경: {calibration.blackRadiusPx}px ({calibration.pxPerMm.toFixed(1)} px/mm)
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleAdjustRadius(-2)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-black text-xs active:scale-90 transition"
+                  title="가상 링 축소"
+                >
+                  링 축소 (-)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAdjustRadius(2)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-black text-xs active:scale-90 transition"
+                  title="가상 링 확대"
+                >
+                  링 확대 (+)
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 text-center leading-tight">
+                실제 사진의 4점 검은 원 테두리에 가상선이 딱 맞도록 크기를 맞춰주세요.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

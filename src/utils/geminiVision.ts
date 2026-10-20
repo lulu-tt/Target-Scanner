@@ -96,11 +96,12 @@ interface GeminiTargetResponse {
   targetType: 'standard' | 'blank';
   centerX: number;
   centerY: number;
+  blackRadiusPx?: number;
   shots: Array<{ x: number; y: number }>;
 }
 
 /**
- * Gemini 2.5 Flash를 활용한 초정밀 표적지 멀티모달 비전 분석
+ * Gemini 3.8 Flash를 활용한 초정밀 표적지 멀티모달 비전 분석
  */
 export async function analyzeTargetWithGemini(
   imageSource: string | File,
@@ -115,19 +116,21 @@ export async function analyzeTargetWithGemini(
   const { base64Data, mimeType, dataUrl } = await prepareImageBase64(imageSource);
 
   const prompt = `You are a world-class Olympic shooting target analysis and scoring AI for ISSF 10m Air Rifle.
-The user provided a high-resolution photo of a shooting target resized/centered onto an 800x800 coordinate plane:
-- Top-left is (0, 0)
-- Bottom-right is (800, 800)
+The user provided a photo of a shooting target resized/centered onto an 800x800 coordinate plane:
+- Top-left is (0, 0), Bottom-right is (800, 800).
 
 CRITICAL INSTRUCTIONS:
-1. TARGET TYPE & CENTER:
-   - 'standard': Has black circular bullseye scoring rings (4 to 10 rings). Find the exact geometric center of the black circle as (centerX, centerY).
-   - 'blank': A white paper target without black rings (often mounted on blue/green rubber or cardboard backing). The shots are clustered near the center. Detect the true centroid (center of mass) of the bullet cluster or central crosshair as (centerX, centerY).
+1. TARGET BULLSEYE CENTER & RADIUS (FOCUS ALIGNMENT):
+   - 'standard': Has black concentric bullseye rings (4 to 10 rings).
+     Find the EXACT geometric center of the black circular bullseye area as (centerX, centerY).
+     Measure the EXACT radius in pixels from (centerX, centerY) to the outer boundary of the black circle (the 4-ring boundary) as 'blackRadiusPx' (typically between 70 and 130 pixels).
+   - 'blank': A white paper target without black rings (often mounted on blue/green rubber or cardboard backing).
+     Detect the true centroid of the bullet cluster as (centerX, centerY), and set blackRadiusPx to 95.
 2. BULLET HOLE DETECTION (SHOTS):
    - The user specified a target count of ${targetCount > 0 ? `${targetCount} shots` : 'all visible shots'}.
-   - Bullet holes are physical 4.5mm round punctures through the paper, revealing the backing (often dark blue, black, or grey) with pellet grease rings and ragged paper tear edges.
+   - Bullet holes are physical 4.5mm round punctures through the paper, revealing backing (often dark blue, black, or grey) with pellet grease rings and ragged paper tear edges.
    - ⚠️ STRICTLY REJECT ALL HANDWRITING & INK NOTES:
-     Coaches and shooters often write notes, Korean words (e.g. '자연잘했습니다', '실수탄 줄이기', '아주 잘했어요!'), score numbers, underlines, or checkmarks with red/blue/black ballpoint pens.
+     Coaches and shooters often write notes, Korean words (e.g. '자연잘했습니다', '실수탄 줄이기', '아주 잘했어요!', '백지사격에서...', '노력'), score numbers, underlines, or checkmarks with red/blue/black ballpoint pens.
      NEVER treat pen handwriting, line strokes, or handwritten letters as bullet holes! Only detect genuine physical bullet punctures.
 3. OVERLAPPING / CLUSTER HOLES:
    - When multiple pellets hit nearly the same spot, they tear a single enlarged or cloverleaf-shaped hole. Accurately infer and output individual pellet center coordinates within that cluster so the total shot count matches ${targetCount > 0 ? targetCount : 'all detected'}.
@@ -135,8 +138,9 @@ CRITICAL INSTRUCTIONS:
    Return strictly valid JSON matching this schema:
    {
      "targetType": "standard" | "blank",
-     "centerX": number (around 400),
-     "centerY": number (around 400),
+     "centerX": number (exact bullseye center, around 400),
+     "centerY": number (exact bullseye center, around 400),
+     "blackRadiusPx": number (exact pixel radius of black bullseye, e.g. 94),
      "shots": [
        { "x": number, "y": number }
      ]
@@ -212,9 +216,14 @@ CRITICAL INSTRUCTIONS:
   const centerY = typeof parsed.centerY === 'number' && !isNaN(parsed.centerY) ? parsed.centerY : 400;
   const targetType = parsed.targetType === 'blank' ? 'blank' : 'standard';
 
-  // 1mm당 픽셀 수 (800x800 표준 정규화 기준, 4점 흑점 직경 30.5mm -> 반경 15.25mm)
-  const pxPerMm = 16.0;
-  const blackRadiusPx = Math.round(ISSF_AIR_RIFLE.BLACK_CIRCLE_RADIUS_MM * pxPerMm);
+  // 실제 흑점 반경(픽셀) 기반 1mm당 픽셀 수(pxPerMm) 동적 정밀 산출
+  let blackRadiusPx = 95;
+  if (typeof parsed.blackRadiusPx === 'number' && parsed.blackRadiusPx >= 40 && parsed.blackRadiusPx <= 250) {
+    blackRadiusPx = Math.round(parsed.blackRadiusPx);
+  }
+
+  // ISSF 공식 규격: 공기소총 흑점(4~10점 링) 반경은 15.25mm
+  const pxPerMm = Number((blackRadiusPx / ISSF_AIR_RIFLE.BLACK_CIRCLE_RADIUS_MM).toFixed(3));
 
   const calibration: TargetCalibration = {
     centerX,
