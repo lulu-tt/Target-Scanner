@@ -18,3 +18,18 @@ test('Actual hole pixels determine gain, not center-to-center spacing alone',()=
 test('Manual placements in later slots are reserved before automatic placement',()=>{const p=createVirtualPins([lobes],[{...one,additionalCount:2}],c,[{id:'virtual:lobes:1',regionId:'lobes',pixelX:0,pixelY:0,moved:true}]);assert.equal(p[0].pixelX,30);assert.equal(p[1].pixelX,0);assert.equal(p[1].placement,'manual');});
 test('Once hole area is covered, remaining count stays inside the mask as overlap',()=>{const p=createVirtualPins([lobes],[{...one,additionalCount:3}],c,[],[position(0),position(30)]);assert.equal(p.length,3);assert.ok(p.every(s=>s.placement==='overlap'&&s.newAreaSamples===0&&[0,30].includes(s.pixelX)));});
 test('Moving a detected center changes which hole remainder gets filled',()=>{assert.equal(createVirtualPins([lobes],[one],c,[],[position(0)])[0].pixelX,30);assert.equal(createVirtualPins([lobes],[one],c,[],[position(30)])[0].pixelX,0);});
+const crowded={id:'crowded',referenceRadiusPx:10,pinCandidates:[{x:1,y:0},{x:-6,y:0}],holeSamples:[...Array.from({length:200},(_,i)=>({x:(i%20)*.1,y:Math.floor(i/20)*.1})),{x:11,y:0}]};
+test('A tiny uncovered edge sliver cannot pull a pin almost onto a detected center',()=>{
+ const pins=createVirtualPins([crowded],[{regionId:'crowded',additionalCount:1}],c,[],[position(0)]);
+ assert.equal(pins[0].pixelX,-6);assert.equal(pins[0].newAreaSamples,0);assert.equal(pins[0].placement,'overlap');
+});
+test('A substantial uncovered hole lobe still outranks spacing in a crowded region',()=>{
+ const r={...crowded,holeSamples:[...crowded.holeSamples,...Array.from({length:20},(_,i)=>({x:10.5+i*.01,y:0}))]};
+ const pins=createVirtualPins([r],[{regionId:'crowded',additionalCount:1}],c,[],[position(0)]);
+ assert.equal(pins[0].pixelX,1);assert.equal(pins[0].newAreaSamples,21);
+});
+test('Small masks do not round the coverage budget up to a whole sample',()=>{
+ const r={...crowded,holeSamples:[...crowded.holeSamples.slice(0,100),{x:11,y:0}]};
+ const pins=createVirtualPins([r],[{regionId:'crowded',additionalCount:1}],c,[],[position(0)]);
+ assert.equal(pins[0].pixelX,1);assert.equal(pins[0].newAreaSamples,1);
+});

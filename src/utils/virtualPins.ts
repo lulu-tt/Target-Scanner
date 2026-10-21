@@ -44,11 +44,18 @@ export function createVirtualPins(regions:UnresolvedRegion[],reviews:RegionScore
     // Prefer centers outside existing impact disks, then maximize uncovered hole area.
     const outside=points.map((p,j)=>occupied.every(q=>distance2(p,q)>radius2)?j:-1).filter(j=>j>=0);
     const candidates=outside.length?outside:points.map((_,j)=>j);
+    const gains=candidates.map(j=>footprints[j].reduce((sum,k)=>sum+(covered[k]?0:1),0));
+    const maxGain=Math.max(...gains);
+    // Once no unoccupied center remains, tiny mask-edge slivers must not pull a
+    // pin almost onto another center. Trade at most 0.5% of mask samples for
+    // better separation; large unexplained areas retain strict priority.
+    const tolerance=outside.length?0:Math.floor(samples.length*.005);
     let best=candidates[0],bestGain=-1,bestSeparation=-1;
-    for(const j of candidates){
-     const area=footprints[j].reduce((sum,k)=>sum+(covered[k]?0:1),0);
+    for(let k=0;k<candidates.length;k++){
+     const j=candidates[k],area=gains[k];
+     if(area<maxGain-tolerance)continue;
      const separation=occupied.length?Math.min(...occupied.map(q=>distance2(points[j],q))):0;
-     if(area>bestGain||(area===bestGain&&separation>bestSeparation)){best=j;bestGain=area;bestSeparation=separation;}
+     if(separation>bestSeparation||(separation===bestSeparation&&area>bestGain)){best=j;bestGain=area;bestSeparation=separation;}
     }
     point=points[best];gain=bestGain;placement=gain>0?'residual':'overlap';
     for(const k of footprints[best])covered[k]=1;
