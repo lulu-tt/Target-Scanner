@@ -1,3 +1,6 @@
+import { completeScore } from './utils/scoreCompletion';
+import { ScoreCompletion } from './components/ScoreCompletion';
+import { RegionScoreReview } from './types/target';
 import { UnresolvedRegion } from './utils/overlapDetection';
 /**
  * [TargetScan AI 메인 애플리케이션 컴포넌트]
@@ -58,6 +61,10 @@ export const App: React.FC = () => {
     pxPerMm: 16.0,
   });
   const [shots, setShots] = useState<ShotPoint[]>([]);
+  const [scoreReviews, setScoreReviews] = useState<RegionScoreReview[]>([]);
+  const [scoreAcknowledged, setScoreAcknowledged] = useState(false);
+  const [cardTotal, setCardTotal] = useState<number | null>(null);
+  const resetScoreReview = () => { setScoreReviews([]); setScoreAcknowledged(false); setCardTotal(null); };
   const [unresolvedRegions, setUnresolvedRegions] = useState<UnresolvedRegion[]>([]);
   const [analysisWarnings, setAnalysisWarnings] = useState<string[]>([]);
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
@@ -118,6 +125,7 @@ export const App: React.FC = () => {
       setImageUrl(result.normalizedImageUrl);
       setCalibration(result.calibration);
       setShots(result.detectedShots);
+      resetScoreReview();
       setUnresolvedRegions(result.unresolvedRegions ?? []);
       setAnalysisWarnings(result.warnings ?? []);
       setSelectedShotId(null);
@@ -151,6 +159,16 @@ export const App: React.FC = () => {
               mode,
               targetCount: count,
             });
+            // AI suggestions share the same locally fitted calibration and overlap review regions.
+            const geometry = await processTargetImage(file, undefined, { mode, targetCount: count });
+            result = {
+              ...geometry,
+              detectedShots: result.detectedShots.map(shot => {
+                const scored = calculateShotScore(shot.pixelX, shot.pixelY, geometry.calibration);
+                return { ...shot, score: scored.score, distance_mm: scored.distanceMm, offsetX_mm: scored.offsetX_mm, offsetY_mm: scored.offsetY_mm };
+              }),
+              warnings: [...(geometry.warnings ?? []), 'AI의 위치 제안은 800px 사진 기반 추정입니다. 표적 보정과 겹침 영역은 원본 영역 분석 결과를 사용합니다.'],
+            };
             showToast(`Gemini AI: 감지·추정 위치 ${result.detectedShots.length}개. 결과를 확인해주세요.`);
           } catch (aiErr: any) {
             console.warn('Gemini AI 분석 실패, 온디바이스 v3.0 엔진으로 자동 폴백합니다:', aiErr);
@@ -174,6 +192,7 @@ export const App: React.FC = () => {
         setImageUrl(result.normalizedImageUrl);
         setCalibration(result.calibration);
         setShots(result.detectedShots);
+        resetScoreReview();
         setUnresolvedRegions(result.unresolvedRegions ?? []);
         setAnalysisWarnings(result.warnings ?? []);
         setSelectedShotId(null);
@@ -202,6 +221,7 @@ export const App: React.FC = () => {
       const dataUrl = e.target?.result as string;
       if (dataUrl) {
         setImageUrl(dataUrl);
+        resetScoreReview();
         setShots([]); // 이전 핀 초기화하여 깨끗한 표적지 사진 표시
       }
     };
@@ -244,7 +264,7 @@ export const App: React.FC = () => {
 
   // 현재 세션 저장
   const handleSaveSession = () => {
-    if (shots.length === 0) return;
+    if (!imageUrl) return;
 
     const newSession: SavedSession = {
       id: `session-${Date.now()}`,
@@ -261,6 +281,8 @@ export const App: React.FC = () => {
       analysisWarnings: [...analysisWarnings],
       calibration: { ...calibration },
       unresolvedRegions: [...unresolvedRegions],
+      scoreReviews, scoreAcknowledged, cardTotal,
+      reviewedScore: (()=>{ const r=completeScore(shots,unresolvedRegions,scoreReviews,targetShotCount,calibration,scoreAcknowledged,cardTotal);return {complete:r.complete,total:r.total,expected:targetShotCount,source:r.override?'card-total':'located-and-regions'}; })(),
     };
 
     const updated = [newSession, ...savedSessions];
@@ -284,6 +306,7 @@ export const App: React.FC = () => {
     setMobileView('target');
     if (session.targetImage) setImageUrl(session.targetImage);
     setShots(session.shots);
+    setScoreReviews(session.scoreReviews ?? []); setScoreAcknowledged(session.scoreAcknowledged ?? false); setCardTotal(session.cardTotal ?? null);
     setUnresolvedRegions(session.unresolvedRegions ?? []);
     setAnalysisWarnings(session.analysisWarnings ?? ['이전 버전 기록은 임의 보충된 탄착점을 포함할 수 있습니다. 원본 사진으로 다시 분석해주세요.']);
     setSelectedShotId(null);
@@ -304,6 +327,11 @@ export const App: React.FC = () => {
 
   // 과녁 중심(초점) 및 가상선 보정 핸들러 (중심/반경 변경 시 모든 샷 점수 실시간 재계산)
   const handleCalibrationChange = (newCalib: TargetCalibration) => {
+    const geometryChanged = newCalib.centerX !== calibration.centerX || newCalib.centerY !== calibration.centerY || newCalib.pxPerMm !== calibration.pxPerMm || newCalib.pxPerMmY !== calibration.pxPerMmY;
+    if (geometryChanged) {
+      resetScoreReview();
+      if (scoreReviews.length || scoreAcknowledged || cardTotal !== null) showToast('보정값이 바뀌어 추가 점수와 총점 확인을 초기화했습니다.');
+    } else setScoreAcknowledged(false);
     setCalibration(newCalib);
     setShots((prev) =>
       prev.map((shot) => {
@@ -336,7 +364,7 @@ export const App: React.FC = () => {
       <Header
         onSaveSession={handleSaveSession}
         onOpenHistory={() => setIsHistoryOpen(true)}
-        hasShots={shots.length > 0 && !isLoading && !isAwaitingModeSelection}
+        hasShots={!!imageUrl && !isLoading && !isAwaitingModeSelection}
         historyCount={savedSessions.length}
         theme={theme}
         onToggleTheme={toggleTheme}
@@ -366,10 +394,11 @@ export const App: React.FC = () => {
               </div>
               <div className="grid min-w-0 items-start gap-5 lg:grid-cols-12">
                 <div className={`min-w-0 lg:col-span-7 lg:block ${mobileView === 'target' ? 'block' : 'hidden'}`}>
-                  <TargetCanvas unresolvedRegions={unresolvedRegions} imageUrl={imageUrl} calibration={calibration} onCalibrationChange={handleCalibrationChange} shots={shots} selectedShotId={selectedShotId} onShotsChange={setShots} onSelectShot={setSelectedShotId} mpi={{ x_mm: stats.mpiX_mm, y_mm: stats.mpiY_mm }} targetCount={targetShotCount} />
+                  <TargetCanvas unresolvedRegions={unresolvedRegions} imageUrl={imageUrl} calibration={calibration} onCalibrationChange={handleCalibrationChange} shots={shots} selectedShotId={selectedShotId} onShotsChange={(next) => { setShots(next); resetScoreReview(); }} onSelectShot={setSelectedShotId} mpi={{ x_mm: stats.mpiX_mm, y_mm: stats.mpiY_mm }} targetCount={targetShotCount} />
                   <button onClick={() => goToWorkspace('results')} className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 text-sm font-bold text-white dark:bg-slate-800 lg:hidden">분석 결과 확인 <ArrowRight size={17} /></button>
                 </div>
-                <div className={`min-w-0 lg:col-span-5 lg:block ${mobileView === 'results' ? 'block' : 'hidden'}`}>
+                <div className={`min-w-0 space-y-4 lg:col-span-5 lg:block ${mobileView === 'results' ? 'block' : 'hidden'}`}>
+                  <ScoreCompletion shots={shots} regions={unresolvedRegions} reviews={scoreReviews} calibration={calibration} expected={targetShotCount} acknowledged={scoreAcknowledged} cardTotal={cardTotal} onReviews={setScoreReviews} onAcknowledge={setScoreAcknowledged} onCardTotal={setCardTotal}/>
                   <ScoreBoard unresolvedRegions={unresolvedRegions} shots={shots} stats={stats} targetCount={targetShotCount} analysisWarnings={analysisWarnings} selectedShotId={selectedShotId} onSelectShot={(id) => { setSelectedShotId(id); if (id) goToWorkspace('target'); }} />
                 </div>
               </div>
@@ -381,7 +410,7 @@ export const App: React.FC = () => {
         <button onClick={() => { setMobileView('target'); window.scrollTo({ top: 0, behavior: 'auto' }); }} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold text-slate-500 dark:text-slate-400"><ScanLine size={20} />스캔</button>
         <button disabled={!imageUrl || isLoading || isAwaitingModeSelection} onClick={() => goToWorkspace('results')} className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold disabled:opacity-30 ${mobileView === 'results' ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}><BarChart3 size={20} />결과</button>
         <button onClick={() => setIsHistoryOpen(true)} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold text-slate-500 dark:text-slate-400"><History size={20} />기록 {savedSessions.length > 0 ? savedSessions.length : ''}</button>
-        <button disabled={shots.length === 0 || isLoading || isAwaitingModeSelection} onClick={handleSaveSession} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl bg-red-600 text-[11px] font-bold text-white disabled:bg-slate-100 disabled:text-slate-400 dark:disabled:bg-slate-800"><BookmarkPlus size={20} />기록 저장</button>
+        <button disabled={!imageUrl || isLoading || isAwaitingModeSelection} onClick={handleSaveSession} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl bg-red-600 text-[11px] font-bold text-white disabled:bg-slate-100 disabled:text-slate-400 dark:disabled:bg-slate-800"><BookmarkPlus size={20} />기록 저장</button>
       </nav>
 
       {/* 히스토리 모달 */}

@@ -60,7 +60,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
   const handleAdjustCenter = (dx: number, dy: number) => {
     if (!onCalibrationChange) return;
     const newCalib: TargetCalibration = {
-      ...calibration,
+      ...calibration, verified: false, method: 'manual',
       centerX: Math.round(calibration.centerX + dx),
       centerY: Math.round(calibration.centerY + dy),
     };
@@ -72,7 +72,8 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
     const newRadius = Math.max(40, Math.min(250, calibration.blackRadiusPx + delta));
     const newPxPerMm = Number((newRadius / ISSF_AIR_RIFLE.BLACK_CIRCLE_RADIUS_MM).toFixed(3));
     const newCalib: TargetCalibration = {
-      ...calibration,
+      ...calibration, verified: false, method: 'manual',
+      pxPerMmY: (calibration.pxPerMmY ?? calibration.pxPerMm) * newPxPerMm / calibration.pxPerMm,
       blackRadiusPx: newRadius,
       pxPerMm: newPxPerMm,
     };
@@ -128,7 +129,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
         const radiusPx = (ringDiameterMm / 2.0) * calibration.pxPerMm;
 
         ctx.beginPath();
-        ctx.arc(calibration.centerX, calibration.centerY, radiusPx, 0, Math.PI * 2);
+        ctx.ellipse(calibration.centerX, calibration.centerY, radiusPx, radiusPx * (calibration.pxPerMmY ?? calibration.pxPerMm) / calibration.pxPerMm, 0, 0, Math.PI * 2);
         ctx.strokeStyle = r >= 4 ? 'rgba(255, 255, 255, 0.45)' : 'rgba(50, 50, 50, 0.4)';
         ctx.lineWidth = 1.2;
         ctx.stroke();
@@ -139,7 +140,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
     // 3. MPI(탄착군 중심) 표시 (옵션)
     if (showMpi && shots.length > 1) {
       const mpiPxX = calibration.centerX + mpi.x_mm * calibration.pxPerMm;
-      const mpiPxY = calibration.centerY + mpi.y_mm * calibration.pxPerMm;
+      const mpiPxY = calibration.centerY + mpi.y_mm * (calibration.pxPerMmY ?? calibration.pxPerMm);
 
       ctx.save();
       ctx.strokeStyle = '#00E5FF';
@@ -421,6 +422,12 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
       </div>
       <p role="status" className={`mb-3 w-full rounded-xl px-3 py-2.5 text-xs leading-relaxed ${isEditing ? 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300' : 'bg-slate-50 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{isEditing ? '빈 곳을 탭해 추가 · 핀을 끌어 이동 · 선택 후 삭제' : zoom > 1 ? '확대 중에는 표적을 밀어 이동하세요. 초기화하면 화면을 스크롤할 수 있습니다.' : '사진을 살펴본 후 ‘위치 수정’을 눌러 탄착점을 보정하세요.'}</p>
       <div aria-label="핀 상태 범례" className="mb-3 flex w-full flex-wrap gap-x-3 gap-y-1 text-xs font-semibold"><span className="text-emerald-700 dark:text-emerald-400">● 감지 {evidence.detected}</span><span className="text-amber-700 dark:text-amber-400">◌ 추정 {evidence.estimated}</span><span className="text-slate-500">□ 미확정 {evidence.unresolved ?? '발수 미입력'}</span>{evidence.manual > 0 && <span className="text-indigo-600 dark:text-indigo-400">● 수동 {evidence.manual}</span>}</div>
+      <div className="mb-3 w-full rounded-xl bg-slate-50 p-3 text-xs leading-relaxed dark:bg-slate-800">
+        <p>표적 보정: {calibration.targetType === 'blank' ? '백지 · 자동 점수 기준 없음' : calibration.method === 'multi-ring' ? `다중 링 ${calibration.ringSupport}개 적합 · 가로/세로 배율 보정` : '초기 중심·크기 · 수동 검토 필요'}</p>
+        {calibration.targetType === 'standard' && <p className="mt-1">가로 {calibration.pxPerMm.toFixed(2)} · 세로 {(calibration.pxPerMmY ?? calibration.pxPerMm).toFixed(2)} px/mm</p>}
+        <p className="mt-1 text-slate-500">기울기가 큰 사진은 정면에서 다시 촬영하세요. 링 정렬을 원본과 확인해주세요.</p>
+        {calibration.targetType === 'standard' && <label className="mt-2 flex min-h-11 items-center gap-2"><input aria-label="링 보정 확인" type="checkbox" className="h-5 w-5" checked={calibration.verified ?? false} onChange={e=>onCalibrationChange?.({...calibration, verified:e.target.checked})}/>중심과 링 크기를 확인했습니다</label>}
+      </div>
       {/* 2. 캔버스 뷰포트 영역 (모바일 화면에 맞춰 100% 핏) */}
       <div
         ref={containerRef}
@@ -470,6 +477,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
         </div>
         <button onClick={() => setShowDisplayOptions(!showDisplayOptions)} aria-expanded={showDisplayOptions} className="flex min-h-11 items-center gap-1.5 rounded-xl px-2 text-xs font-semibold text-slate-600 dark:text-slate-300"><Settings2 size={17} />표시 설정</button>
       </div>
+      {showDisplayOptions && calibration.targetType === 'standard' && <div className="mt-3 flex w-full flex-wrap items-center gap-2 text-xs"><span>세로 링 배율</span>{[-.05,.05].map(d=><button key={d} aria-label={d<0?'세로 링 줄이기':'세로 링 늘리기'} onClick={()=>onCalibrationChange?.({...calibration,pxPerMmY:Math.max(1,(calibration.pxPerMmY??calibration.pxPerMm)+d),method:'manual',verified:false})} className="min-h-11 rounded-xl border px-4">{d<0?'−':'+'}</button>)}</div>}
       {showDisplayOptions && <div className="mt-2 grid w-full grid-cols-2 gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
         {[{ label: '동심원', enabled: showRings, toggle: () => setShowRings(!showRings) }, { label: '탄착 핀', enabled: showShots, toggle: () => setShowShots(!showShots) }, { label: '점수 라벨', enabled: showScoreLabels, toggle: () => setShowScoreLabels(!showScoreLabels) }, { label: '탄착 중심', enabled: showMpi, toggle: () => setShowMpi(!showMpi) }].map(option => <button key={option.label} onClick={option.toggle} aria-pressed={option.enabled} className={`flex min-h-11 items-center justify-between rounded-xl border px-3 text-xs font-semibold ${option.enabled ? 'border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-800' : 'border-slate-200 text-slate-500 dark:border-slate-700'}`}>{option.label}<span>{option.enabled ? '켬' : '끔'}</span></button>)}
         <button onClick={() => setIsCalibrating(!isCalibrating)} aria-expanded={isCalibrating} className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 text-xs font-semibold dark:bg-slate-800"><Sliders size={16} />표적 중심·크기 보정</button>

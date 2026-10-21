@@ -58,14 +58,14 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
           <div><p className="text-xs font-semibold text-slate-500 dark:text-slate-400">미확정</p><p className="mt-1 text-2xl font-extrabold">{evidence.unresolved ?? '—'}<span className="ml-1 text-xs font-normal">{evidence.unresolved === null ? '발수 미입력' : '발'}</span></p></div>
         </div>
         {(evidence.manual > 0 || evidence.legacy > 0) && <p className="mt-3 text-xs text-slate-500">별도 표시: 수동 {evidence.manual}발 · 미검증 기록 {evidence.legacy}발</p>}
-        <p className="mt-3 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-500 dark:border-slate-800 dark:text-slate-400">감지는 독립된 구멍, 추정은 겹친 경계에서 찾은 중심입니다. 미확정은 선택 발수 중 위치를 배정하지 못한 수이며, 겹침·미검출·표적 밖 탄착을 구별하지 못합니다.</p>
+        <p className="mt-3 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-500 dark:border-slate-800 dark:text-slate-400">감지는 독립된 구멍, 추정은 겹친 경계에서 찾은 중심입니다. 이 표의 미확정은 좌표가 없는 수입니다. 영역별로 점수를 기록해도 좌표 수는 늘어나지 않습니다. 겹침·미검출·표적 밖 탄착을 구별하지 못합니다.</p>
         {evidence.excess > 0 && <p className="mt-2 text-xs font-bold text-red-600">선택 발수보다 {evidence.excess}개 많습니다. 오검출·과분할 여부를 확인해주세요.</p>}
         {unresolvedRegions.length > 0 && <details className="mt-1"><summary className="flex min-h-11 cursor-pointer items-center text-xs font-semibold">겹침·미확정 영역 {unresolvedRegions.length}곳 보기</summary><div className="space-y-2 text-xs leading-relaxed text-slate-500">{unresolvedRegions.map((r,i) => <p key={r.id}>영역 {i+1}: {r.reason}</p>)}</div></details>}
       </section>
       {analysisWarnings.length > 0 && (
         <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
           <p className="text-sm font-bold">{shots.length === 0 ? '탄착 후보를 찾지 못했습니다' : `탄착 후보 ${shots.length}개 · 확인이 필요해요`}</p>
-          <p className="mt-1 text-xs leading-relaxed">{targetCount > 0 && shots.length !== targetCount ? `선택한 ${targetCount}발과 후보 수가 다릅니다. ` : ''}겹침에서 추정한 위치도 포함되어 있습니다. 미확정에는 좌표와 점수를 부여하지 않습니다.</p>
+          <p className="mt-1 text-xs leading-relaxed">{targetCount > 0 && shots.length !== targetCount ? `선택한 ${targetCount}발과 후보 수가 다릅니다. ` : ''}겹침에서 추정한 위치도 포함되어 있습니다. 미확정에는 자동 좌표와 점수를 부여하지 않습니다. 총점 완성에서 추가 발수와 점수를 확인하세요.</p>
           <details className="mt-1"><summary className="flex min-h-11 cursor-pointer items-center text-xs font-semibold underline underline-offset-4">분석 결과 확인 안내</summary><div className="space-y-2 pb-1 text-xs leading-relaxed">{analysisWarnings.map(warning => <p key={warning}>{warning}</p>)}<p>표적 보정에서 핀을 추가·이동·삭제하세요. 점수와 통계는 표시된 후보만 기준으로 계산합니다.</p></div></details>
         </div>
       )}

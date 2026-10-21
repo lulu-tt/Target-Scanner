@@ -25,6 +25,10 @@ export interface TargetCalibration {
   centerY: number;         // 표적지 내 흑점 또는 탄착 중심 Y 픽셀
   blackRadiusPx: number;   // 흑점 픽셀 반경 (백지일 경우 기준 반경)
   pxPerMm: number;         // 1mm당 픽셀 수
+  pxPerMmY?: number;
+  method?: 'multi-ring' | 'coarse' | 'unscaled' | 'manual';
+  ringSupport?: number;
+  verified?: boolean;
   holeRadiusPx?: number; // 이미지에서 얻은 탄흔 표시 반경 (mm 보정값과 구분)
   targetType?: 'standard' | 'blank'; // 정규 표적지 vs 백지 표적지
 }
@@ -47,9 +51,19 @@ export interface SavedSession {
   shots: ShotPoint[];
   stats: GroupingStats;
   unresolvedRegions?: import('../utils/overlapDetection').UnresolvedRegion[];
+  scoreReviews?: RegionScoreReview[];
+  scoreAcknowledged?: boolean;
+  cardTotal?: number | null;
+  reviewedScore?: { complete: boolean; total: number; expected: number; source: 'card-total' | 'located-and-regions' };
   calibration?: TargetCalibration;
   analysisWarnings?: string[]; // 자동 분석의 불확실성 안내도 기록과 함께 보존
   targetImage?: string;     // 썸네일 이미지 dataUrl
   note?: string;
 }
 
+
+export interface RegionScoreReview {
+  regionId: string;
+  additionalCount: number;
+  confirmedTotal?: number;
+}

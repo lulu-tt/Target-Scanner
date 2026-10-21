@@ -3,7 +3,7 @@ const fs=await import('node:fs/promises');
 const { fileURLToPath } = await import('node:url');
 const path = await import('node:path');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const photos=JSON.parse(await fs.readFile(root+'/outputs/overlap/results.json','utf8')).photos;
+const photos=JSON.parse(await fs.readFile(root+'/outputs/native/results.json','utf8')).photos;
 const checks=[];
 await page.cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
 for(const p of photos){
@@ -20,7 +20,7 @@ await page.click('loc=role:button[name="분석 결과"]');
 await page.screenshot({path:root+'/outputs/overlap/mobile-results.png'});
 await page.click('loc=role:button[name="기록 저장"]');
 const s=await page.evaluate(()=>JSON.parse(localStorage.getItem('targetscan_sessions'))[0]);
-if(s.shots.filter(s=>s.detectionStatus==='estimated').length!==3||s.unresolvedRegions.length!==2||!s.shots.some(s=>s.evidence?.visibleArcDeg>=120))throw Error('Evidence persistence');
+if(s.shots.filter(s=>s.detectionStatus==='estimated').length!==photos[5].summary.estimated||s.unresolvedRegions.length!==photos[5].regions.length||!s.shots.some(s=>s.evidence?.visibleArcDeg>=120))throw Error('Evidence persistence');
 await page.click('nav[aria-label="주요 작업"] button >> nth=2');
 await page.click(`[data-session-id="${s.id}"] button[title="기록 삭제"]`);
 await page.click('loc=role:button[name="기록 닫기"]');

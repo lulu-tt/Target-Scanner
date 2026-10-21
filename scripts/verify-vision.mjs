@@ -89,6 +89,6 @@ for (const [i, name] of files.entries()) {
   result.checks.push(`${name}: coordinates independent of selected count`);
   result.photos.push(photo);
 }
-await fs.mkdir(path.join(root, 'outputs/accuracy'), { recursive: true });
-await fs.writeFile(path.join(root, 'outputs/overlap/regression.json'), JSON.stringify(result, null, 2));
+await fs.mkdir(path.join(root, 'outputs/native'), { recursive: true });
+await fs.writeFile(path.join(root, 'outputs/native/regression.json'), JSON.stringify(result, null, 2));
 console.log({ passed: result.checks.length, photos: result.photos.map(r => ({ file: r.name, candidates: r.shots.length, type: r.calibration.targetType })) });

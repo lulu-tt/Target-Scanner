@@ -19,7 +19,7 @@ export const ISSF_AIR_RIFLE = {
 };
 
 /**
- * 픽셀 좌표로부터 ISSF 공식 소수점 점수 계산
+ * 픽셀 좌표로부터 소수점 훈련 참고 점수 계산
  */
 export function calculateShotScore(
   pixelX: number,
@@ -35,12 +35,12 @@ export function calculateShotScore(
   const dyPx = pixelY - calibration.centerY;
 
   const offsetX_mm = dxPx / calibration.pxPerMm;
-  const offsetY_mm = dyPx / calibration.pxPerMm;
+  const offsetY_mm = dyPx / (calibration.pxPerMmY ?? calibration.pxPerMm);
   const distanceMm = Math.hypot(offsetX_mm, offsetY_mm);
 
   // ISSF 소수점 공식: 거리 0mm일 때 10.9점
   // 반경 0.25mm당 0.1점 감소
-  let rawScore = ISSF_AIR_RIFLE.MAX_SCORE - (distanceMm / 0.25) * 0.1;
+  let rawScore = ISSF_AIR_RIFLE.MAX_SCORE - Math.floor((distanceMm + 1e-9) / 0.25) * 0.1;
   if (rawScore < 0) rawScore = 0;
 
   const score = Math.round(rawScore * 10) / 10;

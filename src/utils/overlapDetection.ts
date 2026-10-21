@@ -49,9 +49,10 @@ export function splitHoleComponents(components: HolePixel[][], physicalRadiusPx?
     const componentId = `region-${i}`;
     const occupied = new Set(c.points.map(p => `${p.x},${p.y}`));
     const boundary = c.points.filter(p => [[2,0],[-2,0],[0,2],[0,-2]].some(([dx,dy]) => !occupied.has(`${p.x+dx},${p.y+dy}`)));
+    const normalWindow = Math.max(6, Math.round(radius * .45 / 2) * 2);
     const normals = boundary.map(p => {
       let sx=0,sy=0,n=0;
-      for(let dy=-6;dy<=6;dy+=2) for(let dx=-6;dx<=6;dx+=2) if(occupied.has(`${p.x+dx},${p.y+dy}`)) { sx+=dx;sy+=dy;n++; }
+      for(let dy=-normalWindow;dy<=normalWindow;dy+=2) for(let dx=-normalWindow;dx<=normalWindow;dx+=2) if(occupied.has(`${p.x+dx},${p.y+dy}`)) { sx+=dx;sy+=dy;n++; }
       return { x:-sx/n, y:-sy/n };
     });
     const single = c.round && c.radius >= radius * .75 && c.radius <= radius * 1.2;

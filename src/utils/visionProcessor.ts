@@ -1,3 +1,5 @@
+import { fitPrintedRings } from './ringCalibration';
+import { analyzeNativeRegion } from './nativeAnalysis';
 import { splitHoleComponents, UnresolvedRegion } from './overlapDetection';
 /**
  * [브라우저 온디바이스 컴퓨터 비전 프로세서 v3.0 - AI 고도화 에디션]
@@ -20,11 +22,13 @@ export interface VisionProcessResult {
   warnings?: string[];
   unresolvedRegions?: UnresolvedRegion[];
   holeRadiusPx?: number | null;
+  analysisMetadata?: {sourceWidth:number;sourceHeight:number;roiWidth:number;roiHeight:number;sampleStep:number;native:boolean};
 }
 
 export interface VisionProcessOptions {
   mode?: TargetMode;
   targetCount?: number;
+  previewOnly?: boolean;
 }
 
 export async function processTargetImage(
@@ -162,7 +166,7 @@ export async function processTargetImage(
   // ISSF 규격: 공기소총 흑점(4~10점 링) 직경은 정확히 30.5mm (반경 15.25mm)
   let pxPerMm = blackRadiusPx / ISSF_AIR_RIFLE.BLACK_CIRCLE_RADIUS_MM;
 
-  const calibration: TargetCalibration = {
+  let calibration: TargetCalibration = {
     centerX,
     centerY,
     blackRadiusPx,
@@ -170,7 +174,10 @@ export async function processTargetImage(
     targetType,
   };
 
-  const detectedShots: ShotPoint[] = [];
+  calibration = fitPrintedRings(data, size, calibration);
+  centerX = calibration.centerX; centerY = calibration.centerY;
+  blackRadiusPx = calibration.blackRadiusPx; pxPerMm = calibration.pxPerMm;
+  let detectedShots: ShotPoint[] = [];
   let unresolvedRegions: UnresolvedRegion[] = [];
   let holeRadiusPx: number | null = null;
 
@@ -388,14 +395,25 @@ export async function processTargetImage(
     });
   }
 
+  let analysisMetadata: VisionProcessResult['analysisMetadata'];
+  if (!knownShots?.length && !options?.previewOnly) {
+    const native = analyzeNativeRegion(img, calibration, detectedShots, unresolvedRegions);
+    if (native) {
+      detectedShots = native.shots; unresolvedRegions = native.regions;
+      holeRadiusPx = native.radiusPx; calibration.holeRadiusPx = native.radiusPx ?? undefined;
+      analysisMetadata = native.metadata;
+    }
+  }
   return {
+    analysisMetadata,
     calibration,
     detectedShots,
     unresolvedRegions,
     holeRadiusPx,
     normalizedImageUrl: canvas.toDataURL('image/jpeg', 0.95),
     warnings: knownShots?.length ? [] : [
-      '감지는 독립된 원형 구멍, 추정은 겹친 경계의 원호로 찾은 중심입니다. 추정은 실제 탄착 위치를 보장하지 않습니다. 미확정에는 위치를 만들거나 점수를 부여하지 않습니다.',
+      ...(analysisMetadata ? [`원본 ${analysisMetadata.sourceWidth}×${analysisMetadata.sourceHeight}px에서 ${analysisMetadata.roiWidth}×${analysisMetadata.roiHeight}px 영역을 원본 배율, 2px 간격으로 재분석했습니다.`] : []),
+      '감지는 독립된 원형 구멍, 추정은 겹친 경계의 원호로 찾은 중심입니다. 추정은 실제 탄착 위치를 보장하지 않습니다. 미확정에는 자동 좌표나 점수를 부여하지 않습니다. 영역의 추가 발수와 확인 점수는 별도로 기록할 수 있습니다.',
       ...(targetType === 'blank' ? ['백지 표적은 실제 길이 기준을 알 수 없어 mm와 점수에 임시 배율을 사용합니다.'] : []),
     ],
   };

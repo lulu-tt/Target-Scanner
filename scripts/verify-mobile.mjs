@@ -32,10 +32,10 @@ await page.screenshot({ path: path.join(root, 'outputs/mobile/01-start.png') });
 await page.setInputFiles('input[aria-label="앨범 사진 선택"]', [path.join(root, 'KakaoTalk_Photo_2026-10-19-18-36-39 006.jpeg')]);
 await page.waitForFunction(() => document.querySelector('button[aria-pressed]')?.disabled === false);
 await click('loc=role:button[name="10발"]');
-await page.waitForFunction(() => document.body.innerText.includes('후보 5개 / 선택 10발'));
-assert(await count() === 5, 'Photo 006 still produces five candidates');
+await page.waitForFunction(() => document.body.innerText.includes('후보 6개 / 선택 10발'));
+assert(await count() === 6, 'Photo 006 still produces six candidates');
 await click('canvas[aria-label="표적 사진과 탄착점"]');
-assert(await count() === 5, 'Viewing a target does not add pins');
+assert(await count() === 6, 'Viewing a target does not add pins');
 await click('loc=role:button[name="위치 수정"]');
 const point = await page.evaluate(() => {
   const r = document.querySelector('canvas[aria-label="표적 사진과 탄착점"]').getBoundingClientRect();
@@ -44,13 +44,13 @@ const point = await page.evaluate(() => {
 await page.cdp('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
 await page.cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 1 }] });
 await page.cdp('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-assert(await count() === 6, 'One touch adds exactly one pin in edit mode');
+assert(await count() === 7, 'One touch adds exactly one pin in edit mode');
 await page.cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 1 }] });
 await page.cdp('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x + 18, y: point.y + 10, id: 1 }] });
 await page.cdp('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-assert(await count() === 6, 'Dragging a pin does not create another');
+assert(await count() === 7, 'Dragging a pin does not create another');
 await click('loc=role:button[name="선택 핀 삭제"]');
-assert(await count() === 5, 'Selected pin can be deleted by touch button');
+assert(await count() === 6, 'Selected pin can be deleted by touch button');
 await click('loc=role:button[name="수정 완료"]');
 await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === '표시 설정')?.scrollIntoView({ block: 'center' }));
 await click('loc=role:button[name="표시 설정"]');
@@ -96,13 +96,13 @@ const saved = await page.evaluate(() => {
   const s = JSON.parse(localStorage.getItem('targetscan_sessions') || '[]')[0];
   return s && { id: s.id, mode: s.mode, calibration: s.calibration, warnings: s.analysisWarnings, count: s.shots.length };
 });
-assert(saved && !previousIds.includes(saved.id) && saved.count === 5 && saved.mode === '10shots' && saved.calibration?.pxPerMm > 0 && saved.warnings?.length > 0, 'Saving retains mode, calibration and uncertainty with five candidates');
+assert(saved && !previousIds.includes(saved.id) && saved.count === 6 && saved.mode === '10shots' && saved.calibration?.pxPerMm > 0 && saved.warnings?.length > 0, 'Saving retains mode, calibration and uncertainty with six candidates');
 // Locate only the record created by this test; preserve any pre-existing user records.
 await click('nav[aria-label="주요 작업"] button >> nth=2');
 await page.waitForSelector('[role="dialog"]');
 await page.screenshot({ path: path.join(root, 'outputs/mobile/04-history.png') });
 await click(`[data-session-id="${saved.id}"] button:text-is("열기")`);
-assert(await count() === 5 && await page.evaluate(() => document.body.innerText.includes('후보 5개 / 선택 10발')), 'Saved record restores its target and mode');
+assert(await count() === 6 && await page.evaluate(() => document.body.innerText.includes('후보 6개 / 선택 10발')), 'Saved record restores its target and mode');
 await click('nav[aria-label="주요 작업"] button >> nth=2');
 await click(`[data-session-id="${saved.id}"] button[title="기록 삭제"]`);
 await click('loc=role:button[name="기록 닫기"]');
