@@ -325,12 +325,13 @@ export const App: React.FC = () => {
     setActivePresetId('');
     setIsAwaitingModeSelection(false);
     setTargetMode(session.mode ?? '10shots');
-    if (session.calibration) setCalibration(session.calibration);
+    const restoredCalibration = session.mode === 'blank' ? { ...(session.calibration ?? calibration), targetType: 'blank' as const } : session.calibration;
+    if (restoredCalibration) setCalibration(restoredCalibration);
     setMobileView('target');
     if (session.targetImage) setImageUrl(session.targetImage);
     const restoredShots = session.shots.map(shot => {
-      if (!session.calibration || session.calibration.targetType === 'blank') return shot;
-      const value = calculateShotScore(shot.pixelX, shot.pixelY, session.calibration);
+      if (!restoredCalibration) return shot;
+      const value = calculateShotScore(shot.pixelX, shot.pixelY, restoredCalibration);
       return { ...shot, score: value.score, distance_mm: value.distanceMm, offsetX_mm: value.offsetX_mm, offsetY_mm: value.offsetY_mm };
     });
     const scoresChanged = restoredShots.some((shot, index) => shot.score !== session.shots[index].score);

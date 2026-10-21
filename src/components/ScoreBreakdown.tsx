@@ -8,6 +8,7 @@ interface Props {
   selectedShotId: string | null; onSelectShot: (id: string | null) => void;
 }
 export function ScoreBreakdown({ imageUrl, shots, virtualPins, calibration: c, selectedShotId, onSelectShot }: Props) {
+  const blank = c.targetType === 'blank';
   const [original, setOriginal] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const rows = useMemo(() => [...shots.map(s => ({ ...s, displayId: `#${s.shotNumber}`, source: 'image' as const })),
@@ -35,7 +36,7 @@ export function ScoreBreakdown({ imageUrl, shots, virtualPins, calibration: c, s
         </svg>
         {!original && groups.map((g, gi) => <g key={g.source}>{g.rows.map((r, i) => {
           const p = point(r), y = 28 + i * 30, selected = r.id === selectedShotId;
-          const radius = ISSF_AIR_RIFLE.PELLET_RADIUS_MM * c.pxPerMm / (margin * 2) * 370;
+          const radius = (blank ? c.holeRadiusPx ?? 3 : ISSF_AIR_RIFLE.PELLET_RADIUS_MM * c.pxPerMm) / (margin * 2) * 370;
           return <g key={r.id} data-score-label={r.displayId}>
             <path d={`M${p.x} ${p.y}L${gi ? 502 : 116} ${y - 4}`} stroke={g.color} strokeWidth={selected ? 2 : 0.8} opacity=".65" fill="none" />
             <ellipse cx={p.x} cy={p.y} rx={radius} ry={radius * (c.pxPerMmY ?? c.pxPerMm) / c.pxPerMm} fill={g.color} fillOpacity=".08" stroke={g.color} strokeWidth=".6" strokeDasharray={gi ? '2 2' : undefined} />
@@ -45,18 +46,18 @@ export function ScoreBreakdown({ imageUrl, shots, virtualPins, calibration: c, s
         })}</g>)}
       </svg>
     </div>
-    <p className="mt-2 text-[11px] text-slate-500">초록: 감지 · 보라: 추정 · 빨간 십자: 표적 중심 {expanded && <span>· 좌우로 밀어 보기</span>}</p>
+    <p className="mt-2 text-[11px] text-slate-500">초록: 감지 · 보라: 추정 · {blank ? '좌표는 사진 왼쪽 위를 기준으로 한 비율입니다.' : '빨간 십자: 표적 중심'} {expanded && <span>· 좌우로 밀어 보기</span>}</p>
     {c.targetType !== 'blank' && <p className="mt-2 text-xs leading-relaxed text-slate-500">4.5mm 탄환 가장자리가 닿는 높은 링으로 채점합니다. 중심 링과 최종 점수는 다를 수 있습니다.</p>}
     <div className="mt-4 space-y-5">
       {groups.map(g => <div key={g.source}><h4 className="mb-2 text-base font-extrabold" style={{ color: g.color }}>{g.label} {g.rows.length}개 · {c.targetType === 'blank' ? '—' : `${sum(g.rows).toFixed(1)}점`}</h4>
-        <table className="w-full table-fixed text-right text-[11px] sm:text-xs"><thead className="bg-slate-100 text-slate-500 dark:bg-slate-800"><tr><th className="w-11 py-2 text-left">핀</th><th>점수</th><th>중심 링</th><th>거리 mm</th><th>X mm</th><th>Y mm</th></tr></thead>
-          <tbody>{g.rows.map(r => <tr key={r.id} data-detail-id={r.id} data-detail-source={r.source} data-detail-score={r.score} tabIndex={0} aria-label={`${g.label} ${r.displayId} ${r.score.toFixed(1)}점, 표적에서 확인`} aria-selected={selectedShotId === r.id}
+        <table className="w-full table-fixed text-right text-[11px] sm:text-xs"><thead className="bg-slate-100 text-slate-500 dark:bg-slate-800"><tr><th className="w-11 py-2 text-left">핀</th><th>점수</th>{blank ? <><th>사진 X %</th><th>사진 Y %</th></> : <><th>중심 링</th><th>거리 mm</th><th>X mm</th><th>Y mm</th></>}</tr></thead>
+          <tbody>{g.rows.map(r => <tr key={r.id} data-detail-id={r.id} data-detail-source={r.source} data-detail-score={r.score} tabIndex={0} aria-label={`${g.label} ${r.displayId} ${blank ? '점수 기준 없음' : `${r.score.toFixed(1)}점`}, 표적에서 확인`} aria-selected={selectedShotId === r.id}
             onClick={() => select(r.id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(r.id); } }}
             className={`h-11 cursor-pointer border-b border-slate-100 tabular-nums dark:border-slate-800 ${selectedShotId === r.id ? 'bg-purple-50 dark:bg-purple-950' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-            <td className="text-left font-bold" style={{ color: g.color }}>{r.displayId}</td><td className="font-bold">{c.targetType === 'blank' ? '—' : r.score.toFixed(1)}</td><td>{c.targetType === 'blank' ? '—' : centerRing(Math.hypot((r.pixelX - c.centerX) / c.pxPerMm, (r.pixelY - c.centerY) / (c.pxPerMmY ?? c.pxPerMm))) || '밖'}</td><td>{r.distance_mm.toFixed(2)}</td><td>{r.offsetX_mm.toFixed(2)}</td><td>{r.offsetY_mm.toFixed(2)}</td>
-          </tr>)}</tbody><tfoot><tr className="h-11 font-extrabold"><td className="text-left">소계</td><td>{c.targetType === 'blank' ? '—' : sum(g.rows).toFixed(1)}</td><td colSpan={4}>{g.rows.length}발</td></tr></tfoot></table>
+            <td className="text-left font-bold" style={{ color: g.color }}>{r.displayId}</td><td className="font-bold">{c.targetType === 'blank' ? '—' : r.score.toFixed(1)}</td>{blank ? <><td>{(r.pixelX / 8).toFixed(1)}</td><td>{(r.pixelY / 8).toFixed(1)}</td></> : <><td>{centerRing(Math.hypot((r.pixelX - c.centerX) / c.pxPerMm, (r.pixelY - c.centerY) / (c.pxPerMmY ?? c.pxPerMm))) || '밖'}</td><td>{r.distance_mm.toFixed(2)}</td><td>{r.offsetX_mm.toFixed(2)}</td><td>{r.offsetY_mm.toFixed(2)}</td></>}
+          </tr>)}</tbody><tfoot><tr className="h-11 font-extrabold"><td className="text-left">소계</td><td>{c.targetType === 'blank' ? '—' : sum(g.rows).toFixed(1)}</td><td colSpan={blank ? 2 : 4}>{g.rows.length}발</td></tr></tfoot></table>
       </div>)}
     </div>
-    <div className="mt-3 rounded-xl bg-slate-100 p-3 font-bold dark:bg-slate-800" data-breakdown-total={sum(rows)}>감지 + 추정 = {c.targetType === 'blank' ? '점수 기준 없음' : `${sum(rows).toFixed(1)}점`}</div>
+    <div className="mt-3 rounded-xl bg-slate-100 p-3 font-bold dark:bg-slate-800" data-breakdown-total={blank ? undefined : sum(rows)}>감지 + 추정 = {c.targetType === 'blank' ? '점수 기준 없음' : `${sum(rows).toFixed(1)}점`}</div>
   </section>;
 }

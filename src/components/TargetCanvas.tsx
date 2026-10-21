@@ -507,18 +507,18 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
       {showMpi && mpi && <div aria-label="추정 탄착중심" data-center-x={mpi.pixelX} data-center-y={mpi.pixelY} data-center-count={mpi.count} data-center-complete={mpi.complete} className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-950 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-100">
         <p className="font-bold">{impactCenterLabel(mpi)}</p>
         <p className="mt-1">감지 핀 {mpi.count - mpi.virtualCount}개 + 추정 핀 {mpi.virtualCount}개의 위치를 같은 비중으로 평균했습니다.</p>
-        <p className="mt-1">표적 중심 기준 X {mpi.x_mm.toFixed(2)}mm · Y {mpi.y_mm.toFixed(2)}mm (우측·아래쪽 +)</p>
+        {calibration.targetType !== 'blank' && <p className="mt-1">표적 중심 기준 X {mpi.x_mm.toFixed(2)}mm · Y {mpi.y_mm.toFixed(2)}mm (우측·아래쪽 +)</p>}
         <p className="mt-1">추정 위치에 따른 추정값입니다. {mpi.complete ? '추정 핀을 이동·삭제하면 중심도 바뀝니다.' : '선택 발수 전체의 중심으로 확정할 수 없습니다.'}</p>
       </div>}
       {showDisplayOptions && calibration.targetType === 'standard' && <div className="mt-3 flex w-full flex-wrap items-center gap-2 text-xs"><span>세로 링 배율</span>{[-.05,.05].map(d=><button key={d} aria-label={d<0?'세로 링 줄이기':'세로 링 늘리기'} onClick={()=>onCalibrationChange?.({...calibration,pxPerMmY:Math.max(1,(calibration.pxPerMmY??calibration.pxPerMm)+d),method:'manual',verified:false})} className="min-h-11 rounded-xl border px-4">{d<0?'−':'+'}</button>)}</div>}
       {showDisplayOptions && <div className="mt-2 grid w-full grid-cols-2 gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-        {[{ label: '동심원', enabled: showRings, toggle: () => setShowRings(!showRings) }, { label: '탄착 핀', enabled: showShots, toggle: () => setShowShots(!showShots) }, { label: '점수 라벨', enabled: showScoreLabels, toggle: () => setShowScoreLabels(!showScoreLabels) }, { label: '추정 탄착중심', enabled: showMpi, toggle: () => setShowMpi(!showMpi) }].map(option => <button key={option.label} onClick={option.toggle} aria-pressed={option.enabled} className={`flex min-h-11 items-center justify-between rounded-xl border px-3 text-xs font-semibold ${option.enabled ? 'border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-800' : 'border-slate-200 text-slate-500 dark:border-slate-700'}`}>{option.label}<span>{option.enabled ? '켬' : '끔'}</span></button>)}
-        <button onClick={() => setIsCalibrating(!isCalibrating)} aria-expanded={isCalibrating} className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 text-xs font-semibold dark:bg-slate-800"><Sliders size={16} />표적 중심·크기 보정</button>
+        {[{ label: '동심원', enabled: showRings, toggle: () => setShowRings(!showRings) }, { label: '탄착 핀', enabled: showShots, toggle: () => setShowShots(!showShots) }, { label: '점수 라벨', enabled: showScoreLabels, toggle: () => setShowScoreLabels(!showScoreLabels) }, { label: '추정 탄착중심', enabled: showMpi, toggle: () => setShowMpi(!showMpi) }].filter(option => calibration.targetType !== 'blank' || option.label !== '동심원').map(option => <button key={option.label} onClick={option.toggle} aria-pressed={option.enabled} className={`flex min-h-11 items-center justify-between rounded-xl border px-3 text-xs font-semibold ${option.enabled ? 'border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-800' : 'border-slate-200 text-slate-500 dark:border-slate-700'}`}>{option.label}<span>{option.enabled ? '켬' : '끔'}</span></button>)}
+        {calibration.targetType !== 'blank' && <button onClick={() => setIsCalibrating(!isCalibrating)} aria-expanded={isCalibrating} className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 text-xs font-semibold dark:bg-slate-800"><Sliders size={16} />표적 중심·크기 보정</button>}
       </div>}
 
 
       {/* 3. 과녁 중심 & 가상선 수동 미세조정 컨트롤러 */}
-      {isCalibrating && (
+      {isCalibrating && calibration.targetType !== 'blank' && (
         <div className="w-full max-w-[580px] mt-3.5 p-3.5 bg-gradient-to-r from-purple-50 via-indigo-50 to-slate-50 dark:from-purple-950/40 dark:via-indigo-950/30 dark:to-slate-900 border border-purple-200/80 dark:border-purple-900/60 rounded-2xl flex flex-col gap-2.5 text-xs shadow-lg animate-fadeIn">
           <div className="flex flex-wrap items-center justify-between gap-2 font-bold text-purple-900 dark:text-purple-200">
             <span className="flex items-center gap-1.5">

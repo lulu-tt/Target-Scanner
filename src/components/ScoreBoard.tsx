@@ -8,6 +8,7 @@ import { summarizeDisplayEvidence } from '../utils/shotEvidence';
  */
 
 import React from 'react';
+import { BlankTargetGuide } from './BlankTargetGuide';
 import { ScoreBreakdown } from './ScoreBreakdown';
 import { VirtualPin } from '../utils/virtualPins';
 import { ShotPoint, GroupingStats, TargetCalibration } from '../types/target';
@@ -39,6 +40,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   selectedShotId,
   onSelectShot,
 }) => {
+  const blank = calibration.targetType === 'blank';
   const evidence = summarizeDisplayEvidence(shots, virtualPins.length, targetCount);
   const sightGuide = getSightAdjustmentGuide(stats.mpiX_mm, stats.mpiY_mm);
 
@@ -59,6 +61,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
 
   return (
     <div className="flex flex-col gap-4 w-full">
+      {blank && <BlankTargetGuide shots={shots} />}
       <ScoreBreakdown imageUrl={imageUrl} shots={shots} virtualPins={virtualPins} calibration={calibration} selectedShotId={selectedShotId} onSelectShot={onSelectShot} />
       <section aria-label="탄착 분석 상태" className="surface-card p-4">
         <div className="grid grid-cols-3 gap-2 text-center">
@@ -74,10 +77,11 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
       {analysisWarnings.length > 0 && (
         <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
           <p className="text-sm font-bold">{shots.length === 0 ? '탄착 후보를 찾지 못했습니다' : `탄착 후보 ${shots.length}개 · 확인이 필요해요`}</p>
-          <p className="mt-1 text-xs leading-relaxed">{targetCount > 0 && shots.length !== targetCount ? `선택한 ${targetCount}발과 후보 수가 다릅니다. ` : ''}총점 완성에서 추가 발수와 점수를 확인하세요.</p>
-          <details className="mt-1"><summary className="flex min-h-11 cursor-pointer items-center text-xs font-semibold underline underline-offset-4">분석 결과 확인 안내</summary><div className="space-y-2 pb-1 text-xs leading-relaxed">{analysisWarnings.map(warning => <p key={warning}>{warning}</p>)}<p>표적 보정에서 핀을 추가·이동·삭제하세요. 점수와 통계는 표시된 후보만 기준으로 계산합니다.</p></div></details>
+          <p className="mt-1 text-xs leading-relaxed">{targetCount > 0 && shots.length !== targetCount ? `선택한 ${targetCount}발과 후보 수가 다릅니다. ` : ''}{blank ? '겹친 영역의 추가 발수를 확인하세요.' : '총점 완성에서 추가 발수와 점수를 확인하세요.'}</p>
+          <details className="mt-1"><summary className="flex min-h-11 cursor-pointer items-center text-xs font-semibold underline underline-offset-4">분석 결과 확인 안내</summary><div className="space-y-2 pb-1 text-xs leading-relaxed">{analysisWarnings.map(warning => <p key={warning}>{warning}</p>)}<p>표적 보정에서 핀을 추가·이동·삭제하세요. {blank ? '분포는 감지 핀을 기준으로 표시합니다.' : '점수와 통계는 표시된 후보만 기준으로 계산합니다.'}</p></div></details>
         </div>
       )}
+      {!blank && <>
       {/* 1. 상단 히어로 스코어 카드 (시원시원한 대형 폰트) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-sm dark:shadow-none flex flex-col gap-4 transition-colors">
         <div className="flex items-center justify-between">
@@ -191,6 +195,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
         </div>
       </div>
 
+      </>}
     </div>
   );
 };

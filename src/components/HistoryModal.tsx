@@ -6,6 +6,7 @@ import { Dialog } from './Dialog';
  */
 
 import React from 'react';
+import { blankTargetSpread } from '../utils/blankTargetGuide';
 import { SavedSession } from '../types/target';
 import { X, Calendar, Award, Target, Trash2, ArrowRight } from 'lucide-react';
 
@@ -51,7 +52,11 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
               스캔 후 <strong className="text-emerald-500">[저장]</strong> 버튼으로 훈련을 남겨보세요!
             </div>
           ) : (
-            sessions.map((session) => (
+            sessions.map((session) => {
+              const blank=session.calibration?.targetType==='blank'||session.mode==='blank';
+              const recorded=blank&&session.reviewedScore?.complete&&session.reviewedScore.source==='card-total';
+              const spread=blankTargetSpread(session.shots);
+              return (
               <div
                 key={session.id}
                 data-session-id={session.id}
@@ -65,14 +70,14 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="text-base font-black text-slate-900 dark:text-white flex items-center gap-1">
                       <Award className="w-4 h-4 text-amber-500" />
-                      {(session.reviewedScore?.complete ? session.reviewedScore.total : session.estimatedScore?.ready ? session.estimatedScore.total : session.stats.totalScore).toFixed(1)}점 · {session.reviewedScore?.complete ? (session.reviewedScore.estimated?'사용자 확인 추정':'사용자 확인') : session.estimatedScore?.ready ? `${session.estimatedScore.expected}발 전체 추정` : '좌표 참고 합계'}
+                      {blank&&!recorded?'백지 · 점수 기준 없음':<>{(session.reviewedScore?.complete ? session.reviewedScore.total : session.estimatedScore?.ready ? session.estimatedScore.total : session.stats.totalScore).toFixed(1)}점 · {session.reviewedScore?.complete ? (session.reviewedScore.estimated?'사용자 확인 추정':'사용자 확인') : session.estimatedScore?.ready ? `${session.estimatedScore.expected}발 전체 추정` : '좌표 참고 합계'}</>}
                     </span>
-                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                    {!blank && <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
                       좌표 평균 {session.stats.averageScore.toFixed(2)}
-                    </span>
+                    </span>}
                     <span className="text-xs font-bold text-cyan-600 dark:text-cyan-400 flex items-center gap-1">
                       <Target className="w-3.5 h-3.5" />
-                      집탄 {session.stats.extremeSpread_mm.toFixed(1)}mm
+                      {blank ? spread ? `사진 대비 폭 ${spread.widthPercent.toFixed(1)}% · 높이 ${spread.heightPercent.toFixed(1)}%` : '분포 비교: 감지 핀 2개 이상 필요' : `집탄 ${session.stats.extremeSpread_mm.toFixed(1)}mm`}
                     </span>
                   </div>
                 </div>
@@ -97,7 +102,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                   </button>
                 </div>
               </div>
-            ))
+            );})
           )}
         </div>
     </Dialog>

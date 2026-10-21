@@ -56,7 +56,7 @@ export function calculateShotScore(
   const step = ISSF_AIR_RIFLE.RING_STEP_MM / 10;
   const lastScoringRadius = printedRingRadiusMm(1) + ISSF_AIR_RIFLE.PELLET_RADIUS_MM;
   const zone = Math.max(0, Math.ceil((distanceMm - 1e-9) / step) - 1);
-  const score = distanceMm > lastScoringRadius + 1e-9 ? 0
+  const score = calibration.targetType === 'blank' ? 0 : distanceMm > lastScoringRadius + 1e-9 ? 0
     : Math.round(Math.max(1, ISSF_AIR_RIFLE.MAX_SCORE - zone * 0.1) * 10) / 10;
 
   return {

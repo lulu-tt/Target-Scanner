@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+const load=async path=>{const b=await build({entryPoints:[path],bundle:true,format:'esm',platform:'node',write:false});return import('data:text/javascript;base64,'+Buffer.from(b.outputFiles[0].text).toString('base64'));};
+const {blankTargetSpread}=await load('src/utils/blankTargetGuide.ts');
+const {calculateShotScore}=await load('src/utils/issfSpecs.ts');
+test('Uncalibrated blank positions cannot create automatic scores',()=>{for(const [x,y] of [[400,400],[420,440],[0,0]])assert.equal(calculateShotScore(x,y,{centerX:400,centerY:400,pxPerMm:16,targetType:'blank'}).score,0);});
+test('Relative spread is translation invariant and reports frame proportions',()=>{const a=[{pixelX:100,pixelY:200},{pixelX:260,pixelY:280}],r=blankTargetSpread(a);assert.deepEqual(r,{widthPercent:20,heightPercent:10,direction:'가로 폭이 더 큼'});assert.deepEqual(blankTargetSpread(a.map(p=>({pixelX:p.pixelX+40,pixelY:p.pixelY-30}))),r);});
+test('Vertical and balanced distributions are distinguished without score or aim assumptions',()=>{assert.equal(blankTargetSpread([{pixelX:0,pixelY:0},{pixelX:80,pixelY:160}]).direction,'세로 폭이 더 큼');assert.equal(blankTargetSpread([{pixelX:0,pixelY:0},{pixelX:80,pixelY:80}]).direction,'가로·세로 폭이 비슷함');});
+test('Insufficient or invalid image coordinates do not generate a distribution guide',()=>{assert.equal(blankTargetSpread([]),null);assert.equal(blankTargetSpread([{pixelX:1,pixelY:2}]),null);assert.equal(blankTargetSpread([{pixelX:1,pixelY:2},{pixelX:NaN,pixelY:3}]),null);});

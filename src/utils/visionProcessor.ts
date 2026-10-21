@@ -415,7 +415,7 @@ export async function processTargetImage(
     warnings: knownShots?.length ? [] : [
       ...(analysisMetadata ? [`원본 ${analysisMetadata.sourceWidth}×${analysisMetadata.sourceHeight}px에서 ${analysisMetadata.roiWidth}×${analysisMetadata.roiHeight}px 영역을 원본 배율, 2px 간격으로 재분석했습니다.`] : []),
       '감지는 이미지에서 찾은 탄착점, 추정은 부족한 발수를 겹친 영역에 배치한 핀입니다.',
-      ...(targetType === 'blank' ? ['백지 표적은 실제 길이 기준을 알 수 없어 mm와 점수에 임시 배율을 사용합니다.'] : []),
+      ...(targetType === 'blank' ? ['백지 표적은 링과 기준 길이가 없어 점수와 실제 mm를 표시하지 않습니다.'] : []),
     ],
   };
 }
