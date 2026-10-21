@@ -25,14 +25,14 @@ try{
  await p.waitForFunction(()=>document.body.textContent.includes('Gemini 원본 표적 영역'),undefined,{timeout:60000});
  const state=await p.evaluate(()=>({text:document.body.textContent,rows:document.querySelector('tbody')?.rows.length,virtual:document.querySelectorAll('[data-virtual-pin]').length,total:document.querySelector('[aria-label="선택 발수 추정 총점"]')?.dataset.estimateTotal,request:window.__testRequests[0]}));
  assert(state.rows===6&&state.virtual===4,'Empty AI response preserves six native positions and four virtual pins');
- assert(Number(state.total)===81.9,'Same calibration and selected-count scoring preserve 81.9 estimate');
+ assert(Number(state.total)===83.0,'Same calibration and selected-count scoring preserve 83.0 estimate');
  assert(state.text.includes('다중 링 4개 적합')&&state.text.includes('원본 3000'),'Native ring fitting and source metadata preserved');
  assert(state.request.width>800&&state.request.height>800&&state.request.width<=2048,'AI input uses source-resolution target ROI rather than 800px preview');
  assert(!state.request.keyInUrl&&state.request.schema&&!state.request.quota,'Key excluded from URL; JSON schema enforced; no requested shot quota');
  assert(state.text.includes('기존 6개 보존')&&state.text.includes('AI 일치는 정확도 검증이 아닙니다'),'UI discloses fusion and avoids accuracy claims');
  await p.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent?.trim()==='15발')?.scrollIntoView({block:'center'}));
  await p.click('loc=role:button[name="15발"]');
- await p.waitForFunction(()=>Number(document.querySelector('[aria-label="선택 발수 추정 총점"]')?.dataset.estimateTotal)===123.4,undefined,{timeout:60000});
+ await p.waitForFunction(()=>Number(document.querySelector('[aria-label="선택 발수 추정 총점"]')?.dataset.estimateTotal)===121.6,undefined,{timeout:60000});
  assert(await p.evaluate(()=>window.__testRequests.length===1&&document.querySelector('tbody')?.rows.length===6),'Changing selected count reuses AI analysis without another request or changed image positions');
  await fs.mkdir(root+'/outputs/gemini-comparison',{recursive:true});
  await fs.writeFile(root+'/outputs/gemini-comparison/integration-checks.json',JSON.stringify({kind:'Mock transport, not Gemini accuracy',checks,request:state.request},null,2));

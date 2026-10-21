@@ -108,7 +108,7 @@ export const App: React.FC = () => {
 
   // 집탄 통계 계산 (목표 발수 동적 반영)
   const baseReviews = useMemo(() => mergeRegionReviews(proposeRegions(unresolvedRegions,shots,calibration,targetShotCount,countConditioned),scoreReviews),[unresolvedRegions,shots,calibration,targetShotCount,countConditioned,scoreReviews]);
-  const virtualPins = useMemo(()=>createVirtualPins(unresolvedRegions,baseReviews,calibration,virtualPinEdits),[unresolvedRegions,baseReviews,calibration,virtualPinEdits]);
+  const virtualPins = useMemo(()=>createVirtualPins(unresolvedRegions,baseReviews,calibration,virtualPinEdits,shots),[unresolvedRegions,baseReviews,calibration,virtualPinEdits,shots]);
   const estimatedCenter = useMemo(() => calculateEstimatedImpactCenter(shots, virtualPins, calibration, targetShotCount), [shots, virtualPins, calibration, targetShotCount]);
   const effectiveReviews = useMemo(()=>reviewsWithVirtualScores(baseReviews,virtualPins,calibration),[baseReviews,virtualPins,calibration]);
   const moveVirtualPin = (id:string,x:number,y:number) => {

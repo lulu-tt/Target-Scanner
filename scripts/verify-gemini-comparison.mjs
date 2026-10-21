@@ -18,7 +18,7 @@ for(const photo of ['005','006']){
    const local=await processTargetImage(file);
    const summarize=(result,count)=>{
     const regions=result.unresolvedRegions??[],reviews=proposeRegions(regions,result.detectedShots,result.calibration,count,true);
-    const pins=createVirtualPins(regions,reviews,result.calibration);
+    const pins=createVirtualPins(regions,reviews,result.calibration,[],result.detectedShots);
     const total=completeScore(result.detectedShots,regions,reviewsWithVirtualScores(reviews,pins,result.calibration),count,result.calibration,false,null);
     return {count,detected:result.detectedShots.filter(s=>s.detectionStatus==='detected').length,estimated:result.detectedShots.filter(s=>s.detectionStatus==='estimated').length,virtual:pins.length,imageScore:total.imageScore,virtualScore:total.virtualScore,total:total.estimateReady?total.proposedTotal:null};
    };

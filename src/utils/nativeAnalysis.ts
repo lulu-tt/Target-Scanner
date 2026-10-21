@@ -55,6 +55,8 @@ export function analyzeNativeRegion(img: HTMLImageElement, calibration: TargetCa
       for(let a=0;a<8;a++){const x=Math.round((p.x+fit.radiusPx*.7*Math.cos(a*Math.PI/4))/2)*2,y=Math.round((p.y+fit.radiusPx*.7*Math.sin(a*Math.PI/4))/2)*2;if(occupied.has(`${x},${y}`))inside++;}
       if(inside>=7){pinCandidates.push({x:Math.round(mapX(p.x)*10)/10,y:Math.round(mapY(p.y)*10)/10});if(standard){sum+=calculateShotScore(mapX(p.x),mapY(p.y),calibration).score;n++;}}
     }
-    return {...r,pinCandidates,areaPx2:r.areaPx2===undefined?undefined:r.areaPx2*scale*scale,referenceRadiusPx:r.referenceRadiusPx===undefined?undefined:r.referenceRadiusPx*scale,scoreEstimatePerShot:n?Math.round(sum/n*10)/10:undefined,centerX:mapX(r.centerX),centerY:mapY(r.centerY),width:r.width*scale,height:r.height*scale};
+    const holeSamples = points.filter((_,i)=>i % Math.max(1,Math.ceil(points.length/2048))===0)
+      .map(p=>({x:Math.round(mapX(p.x)*10)/10,y:Math.round(mapY(p.y)*10)/10}));
+    return {...r,pinCandidates,holeSamples,areaPx2:r.areaPx2===undefined?undefined:r.areaPx2*scale*scale,referenceRadiusPx:r.referenceRadiusPx===undefined?undefined:r.referenceRadiusPx*scale,scoreEstimatePerShot:n?Math.round(sum/n*10)/10:undefined,centerX:mapX(r.centerX),centerY:mapY(r.centerY),width:r.width*scale,height:r.height*scale};
   }),radiusPx:fit.radiusPx===null?null:fit.radiusPx*scale,metadata:{sourceWidth:img.width,sourceHeight:img.height,roiWidth:w,roiHeight:h,sampleStep:2,native:true as const}};
 }

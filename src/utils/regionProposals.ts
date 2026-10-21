@@ -25,13 +25,27 @@ export function proposeRegions(regions:UnresolvedRegion[],shots:ShotPoint[],c:Ta
   proposals.forEach((p,i)=>{p.additionalCount=counts[i];});
  }
  if(conditioned&&Number.isFinite(remaining)&&remaining>0&&eligible.length){
-  // Default selected-count assumption: unlocated shots belong to these regions. Allocate by area.
-  const weights=eligible.map(r=>r.areaPx2!);const total=weights.reduce((s,n)=>s+n,0);
+  // Prefer hole area not already explained by detected impact disks.
+  const residualWeights=eligible.map(r=>{
+    const samples=r.holeSamples?.length?r.holeSamples:r.pinCandidates;
+    if(!samples?.length)return r.areaPx2!; // Older records lack a measured mask.
+    const radius=r.referenceRadiusPx??c.holeRadiusPx??c.pxPerMm*2.25;
+    const uncovered=samples.filter(p=>!shots.some(s=>(p.x-s.pixelX)**2+(p.y-s.pixelY)**2<=radius**2)).length;
+    return r.areaPx2!*uncovered/samples.length;
+  });
+  // Do not assign new centers to an already occupied hole while another hole has free centers.
+  const freeCenterWeights=residualWeights.map((weight,i)=>{
+    const r=eligible[i],radius=r.referenceRadiusPx??c.holeRadiusPx??c.pxPerMm*2.25;
+    const available=!r.pinCandidates?.length||r.pinCandidates.some(p=>shots.every(s=>(p.x-s.pixelX)**2+(p.y-s.pixelY)**2>radius**2));
+    return available?weight:0;
+  });
+  const weights=freeCenterWeights.some(w=>w>0)?freeCenterWeights:residualWeights.some(w=>w>0)?residualWeights:eligible.map(r=>r.areaPx2!);
+  const total=weights.reduce((s,n)=>s+n,0);
   const raw=weights.map(w=>remaining*w/total),counts=raw.map(Math.floor);
   let left=remaining-counts.reduce((s,n)=>s+n,0);
   const order=raw.map((v,i)=>({i,f:v-counts[i]})).sort((a,b)=>b.f-a.f);
   for(const item of order){if(!left)break;counts[item.i]++;left--;}
-  proposals.forEach((p,i)=>{p.additionalCount=counts[i];p.source='count-conditioned';p.explanation='선택 발수 중 부족한 탄착이 겹친 영역 안에 있다고 가정해 면적 비율로 배분했습니다. 기본 가정이며 사진에서 직접 센 발수가 아닙니다. 빗나감이 있으면 끄거나 수정하세요.';});
+  proposals.forEach((p,i)=>{p.additionalCount=counts[i];p.source='count-conditioned';p.explanation='선택 발수 중 부족한 탄착이 겹친 영역 안에 있다고 가정해 감지 범위를 제외한 남은 구멍 면적에 우선 배분했습니다. 기본 가정이며 사진에서 직접 센 발수가 아닙니다. 빗나감이 있으면 끄거나 수정하세요.';});
  }
  return proposals.map(p=>{
   const region=eligible.find(r=>r.id===p.regionId)!;

@@ -19,6 +19,7 @@ export interface UnresolvedRegion {
   referenceRadiusPx?: number;
   scoreEstimatePerShot?: number;
   pinCandidates?: {x:number;y:number}[];
+  holeSamples?: {x:number;y:number}[]; // Uniform samples of measured hole pixels, including edges.
 
 }
 
