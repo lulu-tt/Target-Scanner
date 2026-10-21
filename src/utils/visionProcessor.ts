@@ -23,7 +23,7 @@ export interface VisionProcessResult {
   unresolvedRegions?: UnresolvedRegion[];
   aiComparison?: {model:string;inputWidth:number;inputHeight:number;localShots:ShotPoint[];aiShots:ShotPoint[];matched:number;added:number;rejected:number};
   holeRadiusPx?: number | null;
-  analysisMetadata?: {sourceWidth:number;sourceHeight:number;roiWidth:number;roiHeight:number;sampleStep:number;native:boolean;holeMask?:'color'|'contrast'};
+  analysisMetadata?: {sourceWidth:number;sourceHeight:number;roiWidth:number;roiHeight:number;sampleStep:number;native:boolean;holeMask?:'color'|'contrast'|'paper'};
 }
 
 export interface VisionProcessOptions {
@@ -413,7 +413,8 @@ export async function processTargetImage(
     holeRadiusPx,
     normalizedImageUrl: canvas.toDataURL('image/jpeg', 0.95),
     warnings: knownShots?.length ? [] : [
-      ...(analysisMetadata ? [`원본 ${analysisMetadata.sourceWidth}×${analysisMetadata.sourceHeight}px에서 ${analysisMetadata.roiWidth}×${analysisMetadata.roiHeight}px 영역을 원본 배율, 2px 간격으로 재분석했습니다.`] : []),
+      ...(analysisMetadata?.native ? [`원본 ${analysisMetadata.sourceWidth}×${analysisMetadata.sourceHeight}px에서 ${analysisMetadata.roiWidth}×${analysisMetadata.roiHeight}px 영역을 원본 배율, 2px 간격으로 재분석했습니다.`] : []),
+      ...(analysisMetadata && !analysisMetadata.native ? ['종이와 배경을 구분한 뒤 탄착 근거를 찾지 못했습니다. 자동 핀과 발수를 생성하지 않았습니다.'] : []),
       '감지는 이미지에서 찾은 탄착점, 추정은 부족한 발수를 겹친 영역에 배치한 핀입니다.',
       ...(targetType === 'blank' ? ['백지 표적은 링과 기준 길이가 없어 점수와 실제 mm를 표시하지 않습니다.'] : []),
     ],

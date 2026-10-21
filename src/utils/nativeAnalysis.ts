@@ -1,14 +1,25 @@
+import { findPaperBacking } from './paperBacking';
 import { ShotPoint, TargetCalibration } from '../types/target';
 import { splitHoleComponents, UnresolvedRegion } from './overlapDetection';
 import { calculateShotScore } from './issfSpecs';
-interface NativeRegionAnalysis { shots: ShotPoint[]; regions: UnresolvedRegion[]; radiusPx: number | null; metadata: { sourceWidth:number; sourceHeight:number; roiWidth:number; roiHeight:number; sampleStep:number; native:true; holeMask?:'color'|'contrast' } }
+interface NativeRegionAnalysis { shots: ShotPoint[]; regions: UnresolvedRegion[]; radiusPx: number | null; metadata: { sourceWidth:number; sourceHeight:number; roiWidth:number; roiHeight:number; sampleStep:number; native:boolean; holeMask?:'color'|'contrast'|'paper' } }
 /** Re-reads the source ROI at native pixel resolution; display coordinates remain 800px. */
-export function analyzeNativeRegion(img: HTMLImageElement, calibration: TargetCalibration, coarseShots: ShotPoint[], coarseRegions: UnresolvedRegion[], contrastFallback = false): NativeRegionAnalysis | null {
+export function analyzeNativeRegion(img: HTMLImageElement, calibration: TargetCalibration, coarseShots: ShotPoint[], coarseRegions: UnresolvedRegion[]): NativeRegionAnalysis | null {
   const scale=Math.max(800/img.width,800/img.height), ox=(800-img.width*scale)/2,oy=(800-img.height*scale)/2;
-  const points=[...coarseShots.map(s=>({x:s.pixelX,y:s.pixelY})),...coarseRegions.flatMap(r=>[{x:r.centerX-r.width/2,y:r.centerY-r.height/2},{x:r.centerX+r.width/2,y:r.centerY+r.height/2}])];
+  let points=[...coarseShots.map(s=>({x:s.pixelX,y:s.pixelY})),...coarseRegions.flatMap(r=>[{x:r.centerX-r.width/2,y:r.centerY-r.height/2},{x:r.centerX+r.width/2,y:r.centerY+r.height/2}])];
   const standard=calibration.targetType==='standard';
-  if(!standard&&!points.length)return null;
-  const margin=standard?calibration.blackRadiusPx*1.72:45;
+  const normalized=document.createElement('canvas');normalized.width=normalized.height=800;
+  const nc=normalized.getContext('2d',{willReadFrequently:true})!;nc.drawImage(img,ox,oy,img.width*scale,img.height*scale);
+  const paper=findPaperBacking(nc.getImageData(0,0,800,800).data);
+  const blueBacking=paper?.blueBacking??false;
+  if(!standard&&!blueBacking){
+    const rough=paper?.roughHoles??[];
+    const clusters=rough.map(a=>{const x=a.reduce((s,p)=>s+p.x,0)/a.length,y=a.reduce((s,p)=>s+p.y,0)/a.length;return {a,x,y};});
+    const strongest=clusters.map(c=>({c,weight:clusters.filter(d=>Math.hypot(c.x-d.x,c.y-d.y)<200).reduce((s,d)=>s+d.a.length,0)})).sort((a,b)=>b.weight-a.weight)[0]?.c;
+    points=strongest?clusters.filter(c=>Math.hypot(c.x-strongest.x,c.y-strongest.y)<200).flatMap(c=>c.a):[];
+    if(!points.length)return {shots:[],regions:[],radiusPx:null,metadata:{sourceWidth:img.width,sourceHeight:img.height,roiWidth:0,roiHeight:0,sampleStep:2,native:false,holeMask:'paper'}};
+  }
+  const margin=standard?calibration.blackRadiusPx*1.72:blueBacking?45:15;
   const left=standard?calibration.centerX-margin:Math.min(...points.map(p=>p.x))-margin;
   const top=standard?calibration.centerY-margin:Math.min(...points.map(p=>p.y))-margin;
   const right=standard?calibration.centerX+margin:Math.max(...points.map(p=>p.x))+margin;
@@ -19,18 +30,22 @@ export function analyzeNativeRegion(img: HTMLImageElement, calibration: TargetCa
   const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
   const ctx=canvas.getContext('2d',{willReadFrequently:true})!;ctx.drawImage(img,x0,y0,w,h,0,0,w,h);
   const data=ctx.getImageData(0,0,w,h).data,mask=new Uint8Array(w*h),visited=new Uint8Array(w*h);
-  // Preserve the existing color path; use local ink contrast if it produces no impacts.
+  // Non-blue backing requires both local ink contrast and photo-derived backing evidence.
   // Printed white lines/numbers are removed by the spatial opening below.
   const inkSamples:number[]=[];
   const normalizedRadius=(x:number,y:number)=>Math.hypot(((x+x0)*scale+ox-calibration.centerX)/calibration.blackRadiusPx,((y+y0)*scale+oy-calibration.centerY)/(calibration.blackRadiusPx*(calibration.pxPerMmY??calibration.pxPerMm)/calibration.pxPerMm));
-  if(contrastFallback)for(let y=0;y<h;y+=4)for(let x=0;x<w;x+=4){const r=normalizedRadius(x,y);if(r>.35&&r<.9){const i=(y*w+x)*4;inkSamples.push((data[i]+data[i+1]+data[i+2])/3);}}
+  if(standard)for(let y=0;y<h;y+=4)for(let x=0;x<w;x+=4){const r=normalizedRadius(x,y);if(r>.35&&r<.9){const i=(y*w+x)*4;inkSamples.push((data[i]+data[i+1]+data[i+2])/3);}}
   inkSamples.sort((a,b)=>a-b);
   const ink=inkSamples[Math.floor(inkSamples.length*.3)]??40;
   const contrastThreshold=Math.max(ink+30,ink*1.5);
   for(let y=0;y<h;y+=2)for(let x=0;x<w;x+=2){const n=(y*w+x)*4;
     const blue=(data[n+2]>data[n]+10&&data[n+2]>50)||(data[n+2]>data[n]+7&&data[n+2]>65);
-    const exposedBacking=contrastFallback&&normalizedRadius(x,y)<.94&&(data[n]+data[n+1]+data[n+2])/3>contrastThreshold;
-    mask[y*w+x]=blue||exposedBacking?1:0;
+    const nx=(x+x0)*scale+ox,ny=(y+y0)*scale+oy;
+    const bright=(data[n]+data[n+1]+data[n+2])/3>(blue?ink+15:contrastThreshold);
+    const backing=paper?.inside(nx,ny)&&paper.matches(data[n],data[n+1],data[n+2]);
+    // A blue cast on black ink is insufficient when the exterior backing is not blue.
+    const inBlack=standard&&normalizedRadius(x,y)<.94;
+    mask[y*w+x]=(inBlack ? (blueBacking?blue:bright&&(paper?!!backing:true)) : standard ? blue&&(blueBacking||!!backing) : blueBacking?blue:!!backing)?1:0;
   }
   // Preserve native edges while rejecting thin handwriting using a source-scaled opening.
   const blue=mask.slice(),solid=new Uint8Array(w*h);
@@ -58,7 +73,6 @@ export function analyzeNativeRegion(img: HTMLImageElement, calibration: TargetCa
   const fit=splitHoleComponents(components,standard?2.25*calibration.pxPerMm/scale:undefined);
   const mapX=(x:number)=>(x+x0)*scale+ox,mapY=(y:number)=>(y+y0)*scale+oy;
   const shots:ShotPoint[]=fit.fits.map((f,i)=>{const x=mapX(f.x),y=mapY(f.y),s=calculateShotScore(x,y,calibration);return {id:`shot-${i+1}`,shotNumber:i+1,pixelX:x,pixelY:y,offsetX_mm:s.offsetX_mm,offsetY_mm:s.offsetY_mm,distance_mm:s.distanceMm,score:s.score,detectionStatus:f.status,evidence:{componentId:f.componentId,visibleArcDeg:f.visibleArcDeg,residualPx:f.residualPx*scale}};});
-  if(!contrastFallback&&standard&&shots.length===0)return analyzeNativeRegion(img,calibration,coarseShots,coarseRegions,true);
   return {shots,regions:fit.regions.map(r=>{
     const points=components[Number(r.id.replace('region-',''))]??[];
     const occupied=new Set(points.map(p=>`${p.x},${p.y}`));
@@ -71,5 +85,5 @@ export function analyzeNativeRegion(img: HTMLImageElement, calibration: TargetCa
     const holeSamples = points.filter((_,i)=>i % Math.max(1,Math.ceil(points.length/2048))===0)
       .map(p=>({x:Math.round(mapX(p.x)*10)/10,y:Math.round(mapY(p.y)*10)/10}));
     return {...r,pinCandidates,holeSamples,areaPx2:r.areaPx2===undefined?undefined:r.areaPx2*scale*scale,referenceRadiusPx:r.referenceRadiusPx===undefined?undefined:r.referenceRadiusPx*scale,scoreEstimatePerShot:n?Math.round(sum/n*10)/10:undefined,centerX:mapX(r.centerX),centerY:mapY(r.centerY),width:r.width*scale,height:r.height*scale};
-  }).filter(r=>!contrastFallback||!!r.pinCandidates?.length),radiusPx:fit.radiusPx===null?null:fit.radiusPx*scale,metadata:{sourceWidth:img.width,sourceHeight:img.height,roiWidth:w,roiHeight:h,sampleStep:2,native:true as const,holeMask:contrastFallback?'contrast' as const:'color' as const}};
+  }).filter(r=>!!r.pinCandidates?.length),radiusPx:fit.radiusPx===null?null:fit.radiusPx*scale,metadata:{sourceWidth:img.width,sourceHeight:img.height,roiWidth:w,roiHeight:h,sampleStep:2,native:true as const,holeMask:blueBacking?'color' as const:paper?'paper' as const:'contrast' as const}};
 }
