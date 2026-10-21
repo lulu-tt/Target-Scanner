@@ -64,11 +64,11 @@ export const App: React.FC = () => {
   });
   const [shots, setShots] = useState<ShotPoint[]>([]);
   const [virtualPinEdits, setVirtualPinEdits] = useState<VirtualPinEdit[]>([]);
-  const [countConditioned, setCountConditioned] = useState(false);
+  const [countConditioned, setCountConditioned] = useState(true);
   const [scoreReviews, setScoreReviews] = useState<RegionScoreReview[]>([]);
   const [scoreAcknowledged, setScoreAcknowledged] = useState(false);
   const [cardTotal, setCardTotal] = useState<number | null>(null);
-  const resetScoreReview = () => { setVirtualPinEdits([]); setCountConditioned(false); setScoreReviews([]); setScoreAcknowledged(false); setCardTotal(null); };
+  const resetScoreReview = () => { setVirtualPinEdits([]); setCountConditioned(true); setScoreReviews([]); setScoreAcknowledged(false); setCardTotal(null); };
   const [unresolvedRegions, setUnresolvedRegions] = useState<UnresolvedRegion[]>([]);
   const [analysisWarnings, setAnalysisWarnings] = useState<string[]>([]);
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
@@ -160,6 +160,9 @@ export const App: React.FC = () => {
     }
   };
 
+  const aiAnalysisCache = useRef<{file: File; blank: boolean; result: VisionProcessResult} | null>(null);
+  useEffect(() => { aiAnalysisCache.current = null; }, [geminiApiKey]);
+
   // 통합 표적 분석 파이프라인 (AI 키가 있으면 Gemini AI 우선, 없거나 실패 시 온디바이스 v3.0 폴백)
   const executeAnalysis = useCallback(
     async (file: File, mode: TargetMode, count: number, forceAi = false) => {
@@ -177,20 +180,13 @@ export const App: React.FC = () => {
         if (geminiApiKey) {
           setLoadingMessage('✨ Google Gemini AI 멀티모달 비전 정밀 분석 중...');
           try {
-            result = await analyzeTargetWithGemini(file, geminiApiKey, {
-              mode,
-              targetCount: count,
-            });
-            // AI suggestions share the same locally fitted calibration and overlap review regions.
-            const geometry = await processTargetImage(file, undefined, { mode, targetCount: count });
-            result = {
-              ...geometry,
-              detectedShots: result.detectedShots.map(shot => {
-                const scored = calculateShotScore(shot.pixelX, shot.pixelY, geometry.calibration);
-                return { ...shot, score: scored.score, distance_mm: scored.distanceMm, offsetX_mm: scored.offsetX_mm, offsetY_mm: scored.offsetY_mm };
-              }),
-              warnings: [...(geometry.warnings ?? []), 'AI의 위치 제안은 800px 사진 기반 추정입니다. 표적 보정과 겹침 영역은 원본 영역 분석 결과를 사용합니다.'],
-            };
+            const cached = aiAnalysisCache.current;
+            if (!forceAi && cached?.file === file && cached.blank === (mode === 'blank')) {
+              result = cached.result;
+            } else {
+              result = await analyzeTargetWithGemini(file, geminiApiKey, { mode, targetCount: count });
+              aiAnalysisCache.current = { file, blank: mode === 'blank', result };
+            }
             showToast(`Gemini AI: 감지·추정 위치 ${result.detectedShots.length}개. 결과를 확인해주세요.`);
           } catch (aiErr: any) {
             console.warn('Gemini AI 분석 실패, 온디바이스 v3.0 엔진으로 자동 폴백합니다:', aiErr);
@@ -200,6 +196,7 @@ export const App: React.FC = () => {
               mode,
               targetCount: count,
             });
+            result.warnings = [...(result.warnings ?? []), 'Gemini 호출에 실패하여 기존 원본 분석 결과를 표시합니다. AI 분석 결과가 아닙니다.'];
           }
         } else {
           setLoadingMessage('⚡ 온디바이스 컴퓨터 비전 v3.0 분석 중...');
@@ -210,7 +207,7 @@ export const App: React.FC = () => {
           showToast(`온디바이스: 감지·추정 위치 ${result.detectedShots.length}개. 결과를 확인해주세요.`);
         }
 
-        setMobileView('target');
+        setMobileView(count > 0 ? 'results' : 'target');
         setImageUrl(result.normalizedImageUrl);
         setCalibration(result.calibration);
         setShots(result.detectedShots);
@@ -305,6 +302,7 @@ export const App: React.FC = () => {
       unresolvedRegions: [...unresolvedRegions],
       virtualPinEdits,
       scoreReviews: effectiveReviews, countConditioned, scoreAcknowledged, cardTotal,
+      estimatedScore: (()=>{ const r=completeScore(shots,unresolvedRegions,effectiveReviews,targetShotCount,calibration,scoreAcknowledged,cardTotal);return {ready:r.estimateReady,total:r.proposedTotal,expected:targetShotCount,imageScore:r.imageScore,virtualScore:r.virtualScore}; })(),
       reviewedScore: (()=>{ const r=completeScore(shots,unresolvedRegions,effectiveReviews,targetShotCount,calibration,scoreAcknowledged,cardTotal);return {estimated:r.hasEstimates&&!r.override,complete:r.complete,total:r.total,expected:targetShotCount,source:r.override?'card-total':'located-and-regions'}; })(),
     };
 
@@ -330,7 +328,7 @@ export const App: React.FC = () => {
     if (session.targetImage) setImageUrl(session.targetImage);
     setShots(session.shots);
     setVirtualPinEdits(session.virtualPinEdits ?? []);
-    setCountConditioned(session.countConditioned ?? false);
+    setCountConditioned(session.countConditioned ?? true);
     setScoreReviews(session.scoreReviews ?? []); setScoreAcknowledged(session.scoreAcknowledged ?? false); setCardTotal(session.cardTotal ?? null);
     setUnresolvedRegions(session.unresolvedRegions ?? []);
     setAnalysisWarnings(session.analysisWarnings ?? ['이전 버전 기록은 임의 보충된 탄착점을 포함할 수 있습니다. 원본 사진으로 다시 분석해주세요.']);

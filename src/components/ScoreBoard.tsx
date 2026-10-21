@@ -74,7 +74,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5 uppercase tracking-wider">
             <Award className="w-4 h-4 text-amber-500" />
-            감지·추정·수동 합계 ({stats.totalShots}개)
+            이미지 탄착점 소계 ({stats.totalShots}개 · 가상 제외)
           </span>
           <span className="text-xs font-black bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-500/30">
             {analysisWarnings.length ? '참고 점수' : '소수점 채점'}
@@ -92,7 +92,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
           </div>
 
           <div className="text-right">
-            <span className="text-[11px] font-bold text-slate-400 block">표시된 탄착점 평균</span>
+            <span className="text-[11px] font-bold text-slate-400 block">이미지 탄착점 평균</span>
             <span className="text-2xl font-black text-red-600 dark:text-amber-400">
               {stats.averageScore.toFixed(2)}
             </span>

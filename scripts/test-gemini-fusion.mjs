@@ -1,0 +1,12 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {build} from 'esbuild';
+const b=await build({entryPoints:['src/utils/geminiFusion.ts'],bundle:true,write:false,format:'esm',platform:'node'});
+const {fuseGeminiCandidates:fuse}=await import('data:text/javascript;base64,'+Buffer.from(b.outputFiles[0].text).toString('base64'));
+const c={centerX:400,centerY:400,pxPerMm:10,holeRadiusPx:20,targetType:'standard'};
+const shot=(id,x,y=400)=>({id,pixelX:x,pixelY:y,score:5,shotNumber:1,detectionStatus:'detected'});
+const local=[shot('a',400)],regions=[{id:'r',pinCandidates:[{x:440,y:400}]}];
+test('AI agreement preserves local coordinates, score and detected status',()=>{const r=fuse(local,[shot('ai',405)],regions,c);assert.equal(r.matched,1);assert.deepEqual(r.shots,local);});
+test('Only native hole-supported distinct AI centers are added as estimates and rescored',()=>{const r=fuse(local,[shot('ai',440)],regions,c);assert.equal(r.added,1);assert.equal(r.shots[1].detectionStatus,'estimated');assert.equal(r.shots[1].score,9.3);});
+test('AI outside measured hole interiors is rejected even inside target',()=>{const r=fuse(local,[shot('ai',480)],regions,c);assert.equal(r.rejected,1);assert.deepEqual(r.shots,local);});
+test('Repeated AI candidates do not duplicate shots',()=>{const r=fuse(local,[shot('ai',440),shot('ai2',440)],regions,c);assert.equal(r.added,1);assert.equal(r.rejected,1);});
+test('No local support means no AI-only additions and local detections remain',()=>{const r=fuse(local,[shot('ai',440)],[],c);assert.deepEqual(r.shots,local);});
+test('Empty AI result never deletes native shots',()=>assert.deepEqual(fuse(local,[],regions,c).shots,local));

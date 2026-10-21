@@ -17,7 +17,7 @@ export function completeScore(shots: ShotPoint[], regions: UnresolvedRegion[], r
   const count=shots.length+valid.reduce((s,r)=>s+r.additionalCount,0);
   const unresolved=expected>0?Math.max(0,expected-count):null;
   const located=shots.reduce((s,p)=>s+p.score,0);
-  let min=located,max=located,pending=false;
+  let min=located,max=located,pending=false,scoresAvailable=true;
   for(const r of valid){
     if(Number.isFinite(r.confirmedTotal) && r.confirmedTotal! >= 0 && r.confirmedTotal! <= r.additionalCount*10.9){min+=r.confirmedTotal!;max+=r.confirmedTotal!;}
     else if(r.confirmedTotal===undefined && Number.isFinite(r.estimatedTotal) && r.estimatedTotal! >= 0 && r.estimatedTotal! <= r.additionalCount*10.9) {
@@ -25,11 +25,13 @@ export function completeScore(shots: ShotPoint[], regions: UnresolvedRegion[], r
       min+=r.additionalCount*(range?.min??0);max+=r.additionalCount*(range?.max??10.9);
       if(!acknowledged)pending=true;
     }
-    else {const range=regionScoreRange(regions.find(p=>p.id===r.regionId)!,c);min+=r.additionalCount*(range?.min??0);max+=r.additionalCount*(range?.max??10.9);pending=true;}
+    else {const range=regionScoreRange(regions.find(p=>p.id===r.regionId)!,c);min+=r.additionalCount*(range?.min??0);max+=r.additionalCount*(range?.max??10.9);pending=true;scoresAvailable=false;}
   }
   const proposedTotal=located+valid.reduce((sum,r)=>sum+(Number.isFinite(r.confirmedTotal)&&r.confirmedTotal!>=0&&r.confirmedTotal!<=r.additionalCount*10.9?r.confirmedTotal!:r.confirmedTotal===undefined&&Number.isFinite(r.estimatedTotal)&&r.estimatedTotal!>=0&&r.estimatedTotal!<=r.additionalCount*10.9?r.estimatedTotal!:0),0);
   const hasEstimates=valid.some(r=>r.confirmedTotal===undefined&&r.estimatedTotal!==undefined);
   const override=cardTotal!==null&&Number.isFinite(cardTotal)&&expected>0&&cardTotal>=0&&cardTotal<=expected*10.9;
+  const estimateReady=expected>0&&count===expected&&scoresAvailable&&c.targetType==='standard';
+  const imageScore=Math.round(located*10)/10,virtualScore=Math.round((proposedTotal-located)*10)/10;
   const complete=acknowledged&&(cardTotal===null||override)&&(override||(expected>0&&count===expected&&!pending&&c.targetType==='standard'&&c.verified===true));
-  return {count,unresolved,excess:expected>0?Math.max(0,count-expected):0,min:Math.round(min*10)/10,max:Math.round(max*10)/10,pending,complete,hasEstimates,proposedTotal:Math.round(proposedTotal*10)/10,total:override?cardTotal:Math.round(proposedTotal*10)/10,override};
+  return {estimateReady,imageScore,virtualScore,count,unresolved,excess:expected>0?Math.max(0,count-expected):0,min:Math.round(min*10)/10,max:Math.round(max*10)/10,pending,complete,hasEstimates,proposedTotal:Math.round(proposedTotal*10)/10,total:override?cardTotal:Math.round(proposedTotal*10)/10,override};
 }

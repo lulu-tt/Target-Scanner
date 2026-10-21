@@ -56,6 +56,7 @@ export interface SavedSession {
   scoreReviews?: RegionScoreReview[];
   scoreAcknowledged?: boolean;
   cardTotal?: number | null;
+  estimatedScore?: {ready:boolean;total:number;expected:number;imageScore:number;virtualScore:number};
   reviewedScore?: { estimated?: boolean; complete: boolean; total: number; expected: number; source: 'card-total' | 'located-and-regions' };
   calibration?: TargetCalibration;
   analysisWarnings?: string[]; // 자동 분석의 불확실성 안내도 기록과 함께 보존

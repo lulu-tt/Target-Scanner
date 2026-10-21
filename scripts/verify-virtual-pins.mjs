@@ -15,7 +15,7 @@ for(const [i,name] of files.entries()){
  let pins=await pinState();assert(pins.length>0,`Photo ${i+1}: virtual pins generated from automatic proposals`);
  assert(pins.every(p=>data.regions.some(r=>r.pinCandidates?.some(q=>q.x===p.x&&q.y===p.y))),`Photo ${i+1}: every virtual center lies in native hole mask`);
  const actual=await page.evaluate(()=>document.querySelector('tbody').rows.length);assert(actual===data.located,`Photo ${i+1}: real pin table excludes virtual pins`);
- await click('loc=role:button[name="분석 결과"]');await click('input[aria-label="미배정 탄착 모두 겹침으로 확인"]');
+ await click('loc=role:button[name="분석 결과"]');if(!await page.evaluate(()=>document.querySelector('input[aria-label="부족 발수 겹침 가정"]').checked))await click('input[aria-label="부족 발수 겹침 가정"]');
  await click('loc=role:button[name="표적 보정"]');pins=await pinState();assert(pins.length+actual===expected,`Photo ${i+1}: virtual count visualizes area allocation once`);
  await click('loc=role:button[name="위치 수정"]');await click('loc=role:button[name="가상 핀 V1 선택"]');
  await page.evaluate(()=>document.querySelector('canvas[aria-label="표적 사진과 탄착점"]').scrollIntoView({block:'center'}));

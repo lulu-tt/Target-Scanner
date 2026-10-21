@@ -23,7 +23,7 @@ for(const [i,name] of files.entries()){
  const counts=await page.evaluate(()=>[...document.querySelectorAll('input[aria-label$="추가 발수"]')].map(e=>Number(e.value)));
  assert(counts.reduce((s,n)=>s+n,0)===data.area.reduce((s,r)=>s+r.additionalCount,0),`Photo ${i+1}: area count proposals are prefilled in UI`);
  assert(await page.evaluate(()=>document.querySelector('[data-score-complete]').dataset.scoreComplete==='false'),`Photo ${i+1}: proposal never silently becomes confirmed`);
- await click('input[aria-label="미배정 탄착 모두 겹침으로 확인"]');
+ if(!await page.evaluate(()=>document.querySelector('input[aria-label="부족 발수 겹침 가정"]').checked))await click('input[aria-label="부족 발수 겹침 가정"]');
  const sum=await page.evaluate(()=>[...document.querySelectorAll('input[aria-label$="추가 발수"]')].reduce((s,e)=>s+Number(e.value),0));
  assert(sum+data.located===expected,`Photo ${i+1}: one assumption confirmation fills remaining region counts`);
  if(i<4){

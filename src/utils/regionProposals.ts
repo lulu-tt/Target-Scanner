@@ -25,13 +25,13 @@ export function proposeRegions(regions:UnresolvedRegion[],shots:ShotPoint[],c:Ta
   proposals.forEach((p,i)=>{p.additionalCount=counts[i];});
  }
  if(conditioned&&Number.isFinite(remaining)&&remaining>0&&eligible.length){
-  // User explicitly confirms all unlocated shots belong to these regions. Allocate by area.
+  // Default selected-count assumption: unlocated shots belong to these regions. Allocate by area.
   const weights=eligible.map(r=>r.areaPx2!);const total=weights.reduce((s,n)=>s+n,0);
   const raw=weights.map(w=>remaining*w/total),counts=raw.map(Math.floor);
   let left=remaining-counts.reduce((s,n)=>s+n,0);
   const order=raw.map((v,i)=>({i,f:v-counts[i]})).sort((a,b)=>b.f-a.f);
   for(const item of order){if(!left)break;counts[item.i]++;left--;}
-  proposals.forEach((p,i)=>{p.additionalCount=counts[i];p.source='count-conditioned';p.explanation='모든 미배정 탄착이 표시된 겹침 영역 안에 있다는 사용자 확인을 전제로, 남은 발수를 영역 면적 비율로 배분했습니다. 사진에서 직접 센 발수가 아닙니다.';});
+  proposals.forEach((p,i)=>{p.additionalCount=counts[i];p.source='count-conditioned';p.explanation='선택 발수 중 부족한 탄착이 겹친 영역 안에 있다고 가정해 면적 비율로 배분했습니다. 기본 가정이며 사진에서 직접 센 발수가 아닙니다. 빗나감이 있으면 끄거나 수정하세요.';});
  }
  return proposals.map(p=>{
   const region=eligible.find(r=>r.id===p.regionId)!;

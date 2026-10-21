@@ -21,6 +21,7 @@ export interface VisionProcessResult {
   normalizedImageUrl: string;
   warnings?: string[];
   unresolvedRegions?: UnresolvedRegion[];
+  aiComparison?: {model:string;inputWidth:number;inputHeight:number;localShots:ShotPoint[];aiShots:ShotPoint[];matched:number;added:number;rejected:number};
   holeRadiusPx?: number | null;
   analysisMetadata?: {sourceWidth:number;sourceHeight:number;roiWidth:number;roiHeight:number;sampleStep:number;native:boolean};
 }

@@ -1,326 +1,90 @@
-/**
- * [Google Gemini 2.5 Flash Multimodal Vision 엔진]
- * 작성자: 코다리 개발부장 & 디자인 실장 영자
- * 의도:
- *   1. [손글씨/메모 100% 무시]: 코치 피드백, 볼펜 글씨, 평가 문구를 완벽히 식별하여 배제
- *   2. [실제 물리적 탄흔 정밀 탐지]: 종이를 관통한 4.5mm 탄환 구멍만 정확히 탐지
- *   3. [밀집 탄착군 다발성 탄흔 분리]: 찢어진 하나의 구멍 속에 겹친 다발성 탄흔을 정확히 분리
- *   4. [무료 Google AI Studio 키 지원]: 15 RPM 무료 티어 지원으로 유지비 0원
- *   5. [초경량 Zero-Dependency]: 외부 대용량 SDK 없이 브라우저 네이티브 fetch 사용
- */
-
-import { TargetCalibration, ShotPoint, TargetMode } from '../types/target';
-import { ISSF_AIR_RIFLE, calculateShotScore } from './issfSpecs';
-import { VisionProcessResult } from './visionProcessor';
+import { ShotPoint, TargetMode } from '../types/target';
+import { calculateShotScore } from './issfSpecs';
+import { processTargetImage, VisionProcessResult } from './visionProcessor';
+import { fuseGeminiCandidates } from './geminiFusion';
 
 const GEMINI_API_STORAGE_KEY = 'targetscan_gemini_api_key';
-
-/**
- * 저장된 Gemini API 키 가져오기
- */
 export function getStoredGeminiApiKey(): string {
-  try {
-    return localStorage.getItem(GEMINI_API_STORAGE_KEY) || '';
-  } catch {
-    return '';
-  }
+  try { return localStorage.getItem(GEMINI_API_STORAGE_KEY) || ''; } catch { return ''; }
 }
-
-/**
- * Gemini API 키 저장하기
- */
 export function setStoredGeminiApiKey(key: string): void {
   try {
-    if (key.trim()) {
-      localStorage.setItem(GEMINI_API_STORAGE_KEY, key.trim());
-    } else {
-      localStorage.removeItem(GEMINI_API_STORAGE_KEY);
-    }
-  } catch (e) {
-    console.error('API 키 저장 실패:', e);
-  }
+    if (key.trim()) localStorage.setItem(GEMINI_API_STORAGE_KEY, key.trim());
+    else localStorage.removeItem(GEMINI_API_STORAGE_KEY);
+  } catch { console.error('API 키 저장 실패'); }
 }
 
-/**
- * 이미지를 800x800 표준 캔버스에 렌더링하고 JPEG Base64 문자열로 변환
- */
-async function prepareImageBase64(
-  imageSource: string | File
-): Promise<{ base64Data: string; mimeType: string; dataUrl: string }> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-
-    img.onload = () => {
-      const size = 800;
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Canvas 2D context 생성 실패'));
-        return;
-      }
-
-      // 흰색 배경 채우기
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, size, size);
-
-      // 종횡비 유지하며 800x800 정사각형 중앙 채우기
-      const scale = Math.max(size / img.width, size / img.height);
-      const renderX = (size - img.width * scale) / 2;
-      const renderY = (size - img.height * scale) / 2;
-      ctx.drawImage(img, renderX, renderY, img.width * scale, img.height * scale);
-
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-      const base64Data = dataUrl.split(',')[1];
-      resolve({ base64Data, mimeType: 'image/jpeg', dataUrl });
-    };
-
-    img.onerror = () => reject(new Error('이미지 로드에 실패했습니다.'));
-
-    if (imageSource instanceof File) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        img.src = e.target?.result as string;
-      };
-      reader.onerror = () => reject(new Error('파일 읽기 실패'));
-      reader.readAsDataURL(imageSource);
-    } else {
-      img.src = imageSource;
-    }
-  });
-}
-
-interface GeminiTargetResponse {
-  targetType: 'standard' | 'blank';
-  centerX: number;
-  centerY: number;
-  blackRadiusPx?: number;
-  shots: Array<{ x: number; y: number }>;
-}
-
-/**
- * Gemini 3.8 Flash를 활용한 초정밀 표적지 멀티모달 비전 분석
- */
-export async function analyzeTargetWithGemini(
-  imageSource: string | File,
-  apiKey: string,
-  options?: { mode?: TargetMode; targetCount?: number }
-): Promise<VisionProcessResult> {
-  if (!apiKey || !apiKey.trim()) {
-    throw new Error('Gemini API 키가 입력되지 않았습니다. 설정에서 API 키를 등록해주세요.');
-  }
-
-  const targetCount = options?.targetCount ?? (options?.mode === '20shots' ? 20 : 10);
-  const { base64Data, mimeType, dataUrl } = await prepareImageBase64(imageSource);
-
-  const prompt = `You are a world-class Olympic shooting target analysis and scoring AI for ISSF 10m Air Rifle.
-The user provided a photo of a shooting target.
-Analyze the target and return all spatial coordinates strictly on a standardized 0 to 1000 scale:
-- (0, 0) is the top-left corner of the image.
-- (1000, 1000) is the bottom-right corner of the image.
-- (500, 500) represents the exact geometric center.
-
-CRITICAL INSTRUCTIONS:
-1. TARGET BULLSEYE CENTER & RADIUS (0-1000 scale):
-   - 'standard': Has black concentric bullseye scoring rings (4 to 10 rings).
-     Find the EXACT geometric center of the black circular bullseye as (centerX, centerY) on the 0-1000 scale (typically near 500, 500).
-     Measure the EXACT radius on the 0-1000 scale from (centerX, centerY) to the outer boundary of the black circle (the 4-ring boundary) as 'blackRadius' (typically between 90 and 150).
-   - 'blank': A white paper target without black rings (often mounted on blue/green rubber or cardboard backing).
-     Detect the true centroid of the bullet cluster as (centerX, centerY) on the 0-1000 scale, and set blackRadius to 118.
-2. STRICT PHYSICAL ROI & BULLET HOLE DETECTION (0-1000 scale):
-   - User-reported shot count (context only, never a quota): ${targetCount > 0 ? `${targetCount} shots` : 'all visible shots'}.
-   - Bullet holes are physical 4.5mm round punctures through paper revealing dark/blue backing, ragged paper tear edges, and pellet grease rings.
-   - ⚠️ CRITICAL PHYSICAL ROI BOUNDARY (ZERO TOLERANCE):
-     ALL valid bullet holes MUST be located strictly WITHIN the concentric scoring ring area (distance from (centerX, centerY) <= 1.6 * blackRadius).
-     ABSOLUTELY NEVER detect any marks outside this circular target area!
-     Specifically:
-     - DO NOT detect handwritten dates, years, or numbers (e.g. '10/18', '2011년', '7.5', '8', '<<').
-     - DO NOT detect printed grid tables or score boxes in the upper corners!
-     - DO NOT detect handwritten Korean coaching notes (e.g. '격발을 할 때 아래쪽으로 구름', '자연잘했습니다', '실수탄 줄이기')!
-     - DO NOT detect printed logos ('ISSF', 'krüger') or edge paper shadows!
-     Any mark with distance > 1.6 * blackRadius from center is 100% handwriting or background noise, NEVER a bullet hole.
-3. OVERLAPPING TORN CLUSTER HOLES:
-   - In targets with 10, 15, or 20 shots, multiple pellets hit near the center, creating a single large torn cavity/hole in the 8-10 rings where backing paper is visible.
-   - Return ONLY individually distinguishable hole centers supported by visible image evidence.
-   - NEVER distribute, invent, or duplicate coordinates to match the user-reported count.
-   - When overlapping shots cannot be separated, return one candidate for that connected cavity.
-   - If no bullet holes are visible, return an empty shots array. Fewer or more candidates than the reported count are allowed.
-4. RESPONSE FORMAT:
-   Return strictly valid JSON matching this schema:
-   {
-     "targetType": "standard" | "blank",
-     "centerX": number (0 to 1000 scale),
-     "centerY": number (0 to 1000 scale),
-     "blackRadius": number (0 to 1000 scale radius of black circle),
-     "shots": [
-       { "x": number, "y": number }
-     ]
-   }`;
-
-  // 최신 gemini-3.8-flash 우선 시도 후, 이전 계정 호환을 위한 fallback 모델 체인
-  const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
-  let lastError: Error | null = null;
-  let candidateText: string | null = null;
-
-  const requestBody = {
-    contents: [
-      {
-        parts: [
-          { text: prompt },
-          {
-            inline_data: {
-              mime_type: mimeType,
-              data: base64Data,
-            },
-          },
-        ],
-      },
-    ],
-    generationConfig: {
-      response_mime_type: 'application/json',
-      temperature: 0.1,
-    },
-  };
-
-  for (const model of candidateModels) {
-    let timeoutId: any;
-    try {
-      const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), 18000); // 18초 초과 시 온디바이스 폴백
-
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const message = errorData?.error?.message || `HTTP 에러 ${response.status}: ${response.statusText}`;
-        lastError = new Error(`Gemini (${model}) API 호출 실패: ${message}`);
-        // 404 모델 Not Found인 경우 다음 모델 시도
-        if (response.status === 404) continue;
-        throw lastError;
-      }
-
-      const resultData = await response.json();
-      candidateText = resultData?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (candidateText) break; // 성공 시 루프 탈출
-    } catch (e: any) {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (e.name === 'AbortError') {
-        lastError = new Error(`Gemini (${model}) 응답 시간 초과 (18초)`);
-      } else {
-        lastError = e;
-      }
-    }
-  }
-
-  if (!candidateText) {
-    throw lastError || new Error('Gemini API로부터 응답을 받지 못했습니다.');
-  }
-
-  let parsed: any;
+/** Crop from the source, never from the downscaled display image. */
+async function prepareTargetCrop(source: string | File, geometry: VisionProcessResult) {
+  const url = typeof source === 'string' ? source : URL.createObjectURL(source);
   try {
-    parsed = JSON.parse(candidateText);
-  } catch (err) {
-    console.error('JSON 파싱 실패:', candidateText);
-    throw new Error('Gemini 분석 결과 형식이 올바르지 않습니다.');
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(new Error('원본 이미지 로드 실패')); img.src = url; });
+    const scale = Math.max(800 / img.width, 800 / img.height);
+    const ox = (800 - img.width * scale) / 2, oy = (800 - img.height * scale) / 2;
+    const c = geometry.calibration;
+    const margin = c.targetType === 'standard' ? c.blackRadiusPx * 1.72 : 200;
+    const x = Math.max(0, Math.floor((c.centerX - margin - ox) / scale));
+    const y = Math.max(0, Math.floor((c.centerY - margin - oy) / scale));
+    const width = Math.min(img.width - x, Math.ceil((c.centerX + margin - ox) / scale) - x);
+    const height = Math.min(img.height - y, Math.ceil((c.centerY + margin - oy) / scale) - y);
+    if (width <= 0 || height <= 0) throw new Error('표적 영역을 찾지 못했습니다.');
+    const canvas = document.createElement('canvas');
+    const factor = Math.min(1, 2048 / Math.max(width, height));
+    canvas.width = Math.round(width * factor); canvas.height = Math.round(height * factor);
+    canvas.getContext('2d')!.drawImage(img, x, y, width, height, 0, 0, canvas.width, canvas.height);
+    return { data: canvas.toDataURL('image/jpeg', .96).split(',')[1],
+      width: canvas.width, height: canvas.height,
+      map: { x: x * scale + ox, y: y * scale + oy, width: width * scale, height: height * scale } };
+  } finally { if (typeof source !== 'string') URL.revokeObjectURL(url); }
+}
+
+export async function analyzeTargetWithGemini(source: string | File, apiKey: string,
+  options?: { mode?: TargetMode; targetCount?: number; geometry?: VisionProcessResult }): Promise<VisionProcessResult> {
+  if (!apiKey.trim()) throw new Error('설정에서 Gemini API 키를 등록해주세요.');
+  const geometry = options?.geometry ?? await processTargetImage(source, undefined, options);
+  const crop = await prepareTargetCrop(source, geometry);
+  const prompt = `Analyze this cropped paper shooting target. Identify individually distinguishable pellet-hole centers using visible circular arcs, torn edges and exposed backing. Ignore printed lines and handwriting. Overlapping cavities may contain multiple centers only where visible image evidence supports them. Completely hidden impacts have no recoverable position: do not invent coordinates. Do not infer a shot quota. Return JSON {"shots":[{"x":number,"y":number}]} with coordinates normalized from 0 to 1000 separately along the cropped image width and height, top-left origin. Return [] if none. Do not return scores; calibrated geometry computes them separately.`;
+  let text: string | undefined, modelUsed = '', lastFailure = '';
+  for (const model of ['gemini-3.5-flash', 'gemini-flash-latest']) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+    try {
+      const response = await fetch(`${import.meta.env.DEV ? '/api/gemini' : 'https://generativelanguage.googleapis.com/v1beta'}/models/${model}:generateContent`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey.trim() },
+        signal: controller.signal,
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: crop.data } }] }],
+          generationConfig: { temperature: 1, thinkingConfig: { thinkingLevel: 'low' }, maxOutputTokens: 4096, response_mime_type: 'application/json',
+            response_schema: { type: 'OBJECT', properties: { shots: { type: 'ARRAY', items: { type: 'OBJECT', properties: { x: { type: 'NUMBER' }, y: { type: 'NUMBER' } }, required: ['x', 'y'] } } }, required: ['shots'] } } }) });
+      if ([404, 500, 502, 503, 504].includes(response.status)) { lastFailure = `Gemini HTTP ${response.status}`; continue; }
+      if (!response.ok) throw new Error(`Gemini HTTP ${response.status}`);
+      const body = await response.json();
+      text = body.candidates?.[0]?.content?.parts?.filter((p: { text?: string; thought?: boolean }) => p.text && !p.thought).map((p: { text: string }) => p.text).join('');
+      modelUsed = model; break;
+    } catch (error) {
+      if (controller.signal.aborted) lastFailure = 'Gemini 응답 시간 초과 (60초)';
+      else throw error;
+    } finally { clearTimeout(timeout); }
   }
-
-  // 구글 비전 표준 [0, 1000] 정규화 좌표계를 800x800 캔버스 좌표계로 정확하게 리스케일링
-  const toCanvasCoord = (val: number, fallback = 400): number => {
-    if (typeof val !== 'number' || !Number.isFinite(val) || val < 0 || val > 1000) return fallback;
-    return Math.round((val / 1000) * 800);
-  };
-
-  const toCanvasRadius = (val: number, fallback = 95): number => {
-    if (typeof val !== 'number' || !Number.isFinite(val) || val <= 0 || val > 1000) return fallback;
-    return Math.round((val / 1000) * 800);
-  };
-
-  const centerX = toCanvasCoord(parsed.centerX, 400);
-  const centerY = toCanvasCoord(parsed.centerY, 400);
-  const targetType = parsed.targetType === 'blank' ? 'blank' : 'standard';
-
-  // 실제 흑점 반경(픽셀) 기반 1mm당 픽셀 수(pxPerMm) 동적 정밀 산출
-  let blackRadiusPx = toCanvasRadius(parsed.blackRadius || parsed.blackRadiusPx, 95);
-  if (blackRadiusPx < 40 || blackRadiusPx > 320) {
-    blackRadiusPx = 95;
+  if (!text) throw new Error(lastFailure || 'Gemini에서 분석 JSON을 받지 못했습니다.');
+  const parsed = JSON.parse(text);
+  if (!Array.isArray(parsed.shots)) throw new Error('Gemini shots 형식이 올바르지 않습니다.');
+  const c = geometry.calibration;
+  const candidates: ShotPoint[] = [];
+  for (const p of parsed.shots.slice(0, 200)) {
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.y < 0 || p.x > 1000 || p.y > 1000) continue;
+    const pixelX = crop.map.x + p.x / 1000 * crop.map.width;
+    const pixelY = crop.map.y + p.y / 1000 * crop.map.height;
+    if (candidates.some(s => Math.hypot(s.pixelX - pixelX, s.pixelY - pixelY) < 1)) continue;
+    const s = calculateShotScore(pixelX, pixelY, c);
+    candidates.push({ id: `ai-${candidates.length}`, shotNumber: candidates.length + 1, pixelX, pixelY,
+      detectionStatus: 'estimated', score: s.score, distance_mm: s.distanceMm, offsetX_mm: s.offsetX_mm, offsetY_mm: s.offsetY_mm });
   }
-
-  // ISSF 공식 규격: 공기소총 흑점(4~10점 링) 반경은 15.25mm
-  const pxPerMm = Number((blackRadiusPx / ISSF_AIR_RIFLE.BLACK_CIRCLE_RADIUS_MM).toFixed(3));
-
-  const calibration: TargetCalibration = {
-    centerX,
-    centerY,
-    blackRadiusPx,
-    pxPerMm,
-    targetType,
-  };
-
-  // [물리적 유효 사격 구역(ROI) 필터링]
-  // ISSF 10m 공기소총 1점 링 외곽 직경은 45.5mm (반경 22.75mm)
-  // 흑점(4점 링) 반경은 15.25mm. 1점 링까지의 비율은 약 1.492배 (탄환 반경 2.25mm 고려 시 약 1.64배).
-  // 상단의 연도("2011년"), 날짜("10/18"), 우상단 점수표, 하단 코치 메모는 중심에서 반경 35mm~70mm 이상 떨어져 있음.
-  const maxAllowedRadiusPx = blackRadiusPx * 1.68;
-  const maxAllowedDistanceMm = 24.5;
-
-  const rawShots: any[] = Array.isArray(parsed.shots) ? parsed.shots : [];
-
-  // 1차: 물리적 ROI 범위 내의 유효 탄착점만 엄격 선별 (외곽 손글씨, 표, 연도 100% 원천 배제)
-  const validCandidates: Array<{ pixelX: number; pixelY: number }> = [];
-
-  rawShots.forEach((s: any) => {
-    // 잘못된 응답을 과녁 중앙 좌표로 바꾸면 존재하지 않는 탄착점이 됩니다.
-    if (!s || !Number.isFinite(s.x) || !Number.isFinite(s.y)
-      || s.x < 0 || s.x > 1000 || s.y < 0 || s.y > 1000) return;
-    const pixelX = toCanvasCoord(s.x, centerX);
-    const pixelY = toCanvasCoord(s.y, centerY);
-    const distPx = Math.hypot(pixelX - centerX, pixelY - centerY);
-    const distMm = distPx / pxPerMm;
-
-    if (distMm <= maxAllowedDistanceMm && distPx <= maxAllowedRadiusPx) {
-      if (!validCandidates.some((candidate) => candidate.pixelX === pixelX && candidate.pixelY === pixelY)) {
-        validCandidates.push({ pixelX, pixelY });
-      }
-    } else {
-      console.warn(`[ROI 필터링 제외] 외곽 메모/노이즈 배제: (${pixelX}, ${pixelY}), 거리: ${distMm.toFixed(1)}mm`);
-    }
-  });
-
-  // 검출 후보를 그대로 유지합니다. 목표 발수에 맞춘 생성·잘라내기는 하지 않습니다.
-  const detectedShots: ShotPoint[] = validCandidates.map((pos, idx) => {
-    const scoreResult = calculateShotScore(pos.pixelX, pos.pixelY, calibration);
-
-    return {
-      id: `ai-shot-${Date.now()}-${idx + 1}`,
-      shotNumber: idx + 1,
-      detectionStatus: 'estimated',
-      pixelX: pos.pixelX,
-      pixelY: pos.pixelY,
-      offsetX_mm: scoreResult.offsetX_mm,
-      offsetY_mm: scoreResult.offsetY_mm,
-      distance_mm: scoreResult.distanceMm,
-      score: scoreResult.score,
-    };
-  });
-
-  return {
-    calibration,
-    detectedShots,
-    normalizedImageUrl: dataUrl,
-    warnings: [
-      'AI 감지 후보입니다. 겹친 구멍의 발수와 개별 위치는 사진만으로 확정할 수 없으니 확인해주세요.',
-      ...(targetType === 'blank' ? ['백지 표적은 실제 길이 기준을 알 수 없어 mm와 점수에 임시 배율을 사용합니다.'] : []),
-    ],
-  };
+  const fusion = fuseGeminiCandidates(geometry.detectedShots, candidates, geometry.unresolvedRegions ?? [], c);
+  return { ...geometry, detectedShots: fusion.shots,
+    aiComparison: { model: modelUsed, inputWidth: crop.width, inputHeight: crop.height,
+      localShots: geometry.detectedShots, aiShots: candidates, matched: fusion.matched, added: fusion.added, rejected: fusion.rejected },
+    warnings: [...(geometry.warnings ?? []),
+      `Gemini 원본 표적 영역 ${crop.width}×${crop.height}px · ${modelUsed}. 기존 ${geometry.detectedShots.length}개 보존 / AI 일치 ${fusion.matched}개 / 원본 구멍 지지 추가 추정 ${fusion.added}개 / 미지지·중복 제외 ${fusion.rejected}개.`,
+      'AI 일치는 정확도 검증이 아닙니다. 완전히 겹쳐 보이지 않는 발수와 위치는 계속 가상 추정으로 표시합니다.'] };
 }
