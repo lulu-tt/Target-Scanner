@@ -23,7 +23,7 @@ test('Synthetic concentric ellipses recover center and independent scales',()=>{
  const fit=fitPrintedRings(data,size,{...c,verified:false});assert.equal(fit.method,'multi-ring');assert.ok(Math.hypot(fit.centerX-cx,fit.centerY-cy)<2);assert.ok(Math.abs(fit.pxPerMm-sx)<.15);assert.ok(Math.abs(fit.pxPerMmY-sy)<.15);assert.equal(fit.verified,false);
 });
 const {calculateShotScore}=await load('src/utils/issfSpecs.ts');
-test('Decimal score uses 0.25mm bins rather than rounding a continuous value',()=>{assert.equal(calculateShotScore(402.4,400,c).score,10.9);assert.equal(calculateShotScore(402.5,400,c).score,10.8);assert.equal(calculateShotScore(424.9,400,c).score,10);assert.equal(calculateShotScore(425,400,c).score,9.9);});
+test('Decimal zones award the higher value at touching boundaries',()=>{assert.equal(calculateShotScore(402.4,400,c).score,10.9);assert.equal(calculateShotScore(402.5,400,c).score,10.9);assert.equal(calculateShotScore(402.5001,400,c).score,10.8);assert.equal(calculateShotScore(424.9,400,c).score,10);assert.equal(calculateShotScore(425,400,c).score,10);assert.equal(calculateShotScore(425.0001,400,c).score,9.9);});
 test('Vertical score respects independent ellipse scale',()=>{const e={...c,pxPerMmY:20};assert.equal(calculateShotScore(410,400,e).score,calculateShotScore(400,420,e).score);});
 
 test('Automatic estimated total requires acknowledgment and invalid manual score cannot fall back to it',()=>{

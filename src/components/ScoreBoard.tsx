@@ -1,5 +1,5 @@
 import { UnresolvedRegion } from '../utils/overlapDetection';
-import { shotStatus, statusLabel, statusColor, summarizeDisplayEvidence } from '../utils/shotEvidence';
+import { summarizeDisplayEvidence } from '../utils/shotEvidence';
 /**
  * [영자 실장의 모던 스코어보드 & 사수 분석 패널]
  * 작성자: 디자인 실장 영자 & 코다리 부장
@@ -7,13 +7,15 @@ import { shotStatus, statusLabel, statusColor, summarizeDisplayEvidence } from '
  *       라이트/다크 듀얼 테마 지원
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
+import { ScoreBreakdown } from './ScoreBreakdown';
 import { VirtualPin } from '../utils/virtualPins';
 import { ShotPoint, GroupingStats, TargetCalibration } from '../types/target';
-import { getSightAdjustmentGuide, calculateShotScore } from '../utils/issfSpecs';
+import { getSightAdjustmentGuide } from '../utils/issfSpecs';
 import { Target, Compass, Award, Sliders } from 'lucide-react';
 
 interface ScoreBoardProps {
+  imageUrl: string;
   shots: ShotPoint[];
   virtualPins: VirtualPin[];
   calibration: TargetCalibration;
@@ -27,6 +29,7 @@ interface ScoreBoardProps {
 
 export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   shots,
+  imageUrl,
   virtualPins,
   calibration,
   unresolvedRegions,
@@ -37,19 +40,6 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   onSelectShot,
 }) => {
   const evidence = summarizeDisplayEvidence(shots, virtualPins.length, targetCount);
-  const detailRows = useMemo(() => [
-    ...shots.map(shot => ({ id: shot.id, displayId: `#${shot.shotNumber}`, source: 'image' as const,
-      label: statusLabel[shotStatus(shot)], color: statusColor[shotStatus(shot)], score: shot.score,
-      distance_mm: shot.distance_mm, offsetX_mm: shot.offsetX_mm, offsetY_mm: shot.offsetY_mm,
-      evidence: shotStatus(shot) === 'estimated' ? shot.evidence : undefined })),
-    ...virtualPins.map((pin, index) => {
-      const position = calculateShotScore(pin.pixelX, pin.pixelY, calibration);
-      return { id: pin.id, displayId: `E${index + 1}`, source: 'estimate' as const,
-        label: '추정', color: '#9333ea', score: pin.score,
-        distance_mm: position.distanceMm, offsetX_mm: position.offsetX_mm, offsetY_mm: position.offsetY_mm,
-        evidence: undefined };
-    }),
-  ], [shots, virtualPins, calibration]);
   const sightGuide = getSightAdjustmentGuide(stats.mpiX_mm, stats.mpiY_mm);
 
   // 최고점 / 최저점 탄환
@@ -69,6 +59,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
 
   return (
     <div className="flex flex-col gap-4 w-full">
+      <ScoreBreakdown imageUrl={imageUrl} shots={shots} virtualPins={virtualPins} calibration={calibration} selectedShotId={selectedShotId} onSelectShot={onSelectShot} />
       <section aria-label="탄착 분석 상태" className="surface-card p-4">
         <div className="grid grid-cols-3 gap-2 text-center">
           <div><p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">감지</p><p className="mt-1 text-2xl font-extrabold">{evidence.detected}<span className="ml-1 text-xs font-normal">발</span></p></div>
@@ -200,85 +191,6 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
         </div>
       </div>
 
-      {/* 3. 10발 상세 스코어 리스트 (모바일 터치 48px 행 높이) */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl overflow-hidden shadow-xl shadow-slate-200/40 dark:shadow-none transition-colors">
-        <div className="px-5 py-3.5 bg-slate-50/80 dark:bg-slate-950/60 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-          <span className="font-extrabold text-slate-800 dark:text-slate-200">발사별 정밀 데이터</span>
-          <span className="text-[11px] font-medium">선택하면 표적에서 확인</span>
-        </div>
-
-        <div className="space-y-2 p-3 sm:hidden">
-          {detailRows.length === 0 && <p className="py-6 text-center text-sm text-slate-500">표적 보정에서 탄착점을 직접 추가할 수 있어요.</p>}
-          {detailRows.map(shot => <button key={shot.id} data-detail-id={shot.id} data-detail-source={shot.source} data-detail-score={shot.score} onClick={() => onSelectShot(shot.id === selectedShotId ? null : shot.id)} aria-label={`${shot.label} ${shot.displayId} ${shot.score.toFixed(1)}점, 표적에서 확인`} aria-pressed={shot.id === selectedShotId} className={`flex min-h-20 w-full items-center gap-3 rounded-2xl border p-3 text-left transition ${shot.id === selectedShotId ? 'border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-950/30' : 'border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50'}`}>
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-xs font-bold text-slate-500 dark:bg-slate-800" style={{color:shot.color}}>{shot.displayId}</span>
-            <div className="min-w-0 flex-1"><p className="text-xs font-semibold text-slate-600 dark:text-slate-300">중심거리 {shot.distance_mm.toFixed(2)}mm</p><p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">X {shot.offsetX_mm.toFixed(1)} · Y {shot.offsetY_mm.toFixed(1)}mm <span className="ml-1" style={{color:shot.color}}>{shot.label}</span></p>{shot.evidence && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">원호 {shot.evidence.visibleArcDeg}° 근거 · 반경 오차 {shot.evidence.residualPx.toFixed(1)}px</p>}</div>
-            <span className="text-xl font-extrabold tabular-nums">{shot.score.toFixed(1)}<span className="ml-0.5 text-[10px] font-medium text-slate-500">점</span></span>
-          </button>)}
-        </div>
-        <div className="hidden max-h-[400px] overflow-auto sm:block">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50/40 dark:bg-slate-950/40 text-[11px] text-slate-400 uppercase tracking-wider sticky top-0 border-b border-slate-100 dark:border-slate-800">
-              <tr>
-                <th className="py-2.5 px-4 font-bold">발차</th>
-                <th className="py-2.5 px-4 font-bold">ISSF 점수</th>
-                <th className="py-2.5 px-4 font-bold">중심거리</th>
-                <th className="py-2.5 px-4 font-bold">좌우(X)</th>
-                <th className="py-2.5 px-4 font-bold">상하(Y)</th>
-                <th className="py-2.5 px-4 text-right font-bold">상태</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
-              {detailRows.map((shot) => {
-                const isSelected = shot.id === selectedShotId;
-                const isTen = shot.score >= 10.0;
-
-                return (
-                  <tr
-                    key={shot.id}
-                    data-detail-id={shot.id}
-                    data-detail-source={shot.source}
-                    data-detail-score={shot.score}
-                    tabIndex={0}
-                    aria-label={`${shot.label} ${shot.displayId} 선택`}
-                    onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectShot(isSelected ? null : shot.id); } }}
-                    onClick={() => onSelectShot(isSelected ? null : shot.id)}
-                    className={`cursor-pointer transition-colors active:bg-red-500/20 ${
-                      isSelected
-                        ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-white font-bold'
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    <td className="py-3 px-4 font-bold text-slate-400">{shot.displayId}</td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 rounded-lg font-black text-xs ${
-                          isTen
-                            ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/40'
-                            : shot.score >= 9.0
-                            ? 'bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                        }`}
-                      >
-                        {shot.score.toFixed(1)}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-500 dark:text-slate-400">{shot.distance_mm.toFixed(2)}mm</td>
-                    <td className="py-3 px-4 text-slate-500 dark:text-slate-400">
-                      {shot.offsetX_mm >= 0 ? `+${shot.offsetX_mm.toFixed(2)}` : shot.offsetX_mm.toFixed(2)}mm
-                    </td>
-                    <td className="py-3 px-4 text-slate-500 dark:text-slate-400">
-                      {shot.offsetY_mm >= 0 ? `+${shot.offsetY_mm.toFixed(2)}` : shot.offsetY_mm.toFixed(2)}mm
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <span className="text-xs font-bold" style={{color:shot.color}}>{shot.label}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 };

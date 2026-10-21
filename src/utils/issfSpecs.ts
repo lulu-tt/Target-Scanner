@@ -18,6 +18,18 @@ export const ISSF_AIR_RIFLE = {
   CLICK_MM: 0.5, // 일반적인 10m 공기소총 조준기 1클릭당 표적지 이동량 (~0.5mm)
 };
 
+/** Printed ring outer radius, distinct from the pellet-center scoring boundary. */
+export function printedRingRadiusMm(ring: number): number {
+  return ISSF_AIR_RIFLE.RING_10_DIAMETER_MM / 2 + (10 - ring) * ISSF_AIR_RIFLE.RING_STEP_MM;
+}
+
+export function centerRing(distanceMm: number): number {
+  for (let ring = 10; ring >= 1; ring--) {
+    if (distanceMm <= printedRingRadiusMm(ring) + 1e-9) return ring;
+  }
+  return 0;
+}
+
 /**
  * 픽셀 좌표로부터 소수점 훈련 참고 점수 계산
  */
@@ -38,12 +50,14 @@ export function calculateShotScore(
   const offsetY_mm = dyPx / (calibration.pxPerMmY ?? calibration.pxPerMm);
   const distanceMm = Math.hypot(offsetX_mm, offsetY_mm);
 
-  // ISSF 소수점 공식: 거리 0mm일 때 10.9점
-  // 반경 0.25mm당 0.1점 감소
-  let rawScore = ISSF_AIR_RIFLE.MAX_SCORE - Math.floor((distanceMm + 1e-9) / 0.25) * 0.1;
-  if (rawScore < 0) rawScore = 0;
-
-  const score = Math.round(rawScore * 10) / 10;
+  // The effective 10-ring radius is 0.25mm + the 2.25mm pellet radius.
+  // Each decimal zone is 0.25mm; touching a boundary receives the higher value.
+  // Outside the effective 1-ring (22.75 + 2.25mm) is a miss, never 0.1–0.9.
+  const step = ISSF_AIR_RIFLE.RING_STEP_MM / 10;
+  const lastScoringRadius = printedRingRadiusMm(1) + ISSF_AIR_RIFLE.PELLET_RADIUS_MM;
+  const zone = Math.max(0, Math.ceil((distanceMm - 1e-9) / step) - 1);
+  const score = distanceMm > lastScoringRadius + 1e-9 ? 0
+    : Math.round(Math.max(1, ISSF_AIR_RIFLE.MAX_SCORE - zone * 0.1) * 10) / 10;
 
   return {
     score,

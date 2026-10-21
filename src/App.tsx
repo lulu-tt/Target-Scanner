@@ -328,10 +328,16 @@ export const App: React.FC = () => {
     if (session.calibration) setCalibration(session.calibration);
     setMobileView('target');
     if (session.targetImage) setImageUrl(session.targetImage);
-    setShots(session.shots);
+    const restoredShots = session.shots.map(shot => {
+      if (!session.calibration || session.calibration.targetType === 'blank') return shot;
+      const value = calculateShotScore(shot.pixelX, shot.pixelY, session.calibration);
+      return { ...shot, score: value.score, distance_mm: value.distanceMm, offsetX_mm: value.offsetX_mm, offsetY_mm: value.offsetY_mm };
+    });
+    const scoresChanged = restoredShots.some((shot, index) => shot.score !== session.shots[index].score);
+    setShots(restoredShots);
     setVirtualPinEdits(session.virtualPinEdits ?? []);
     setCountConditioned(session.countConditioned ?? true);
-    setScoreReviews(session.scoreReviews ?? []); setScoreAcknowledged(session.scoreAcknowledged ?? false); setCardTotal(session.cardTotal ?? null);
+    setScoreReviews(session.scoreReviews ?? []); setScoreAcknowledged(scoresChanged ? false : session.scoreAcknowledged ?? false); setCardTotal(session.cardTotal ?? null);
     setUnresolvedRegions(session.unresolvedRegions ?? []);
     setAnalysisWarnings(session.analysisWarnings ?? ['이전 버전 기록은 임의 보충된 탄착점을 포함할 수 있습니다. 원본 사진으로 다시 분석해주세요.']);
     setSelectedShotId(null);
@@ -424,7 +430,7 @@ export const App: React.FC = () => {
                 </div>
                 <div className={`min-w-0 space-y-4 lg:col-span-5 lg:block ${mobileView === 'results' ? 'block' : 'hidden'}`}>
                   <ScoreCompletion shots={shots} regions={unresolvedRegions} reviews={effectiveReviews} conditioned={countConditioned} onConditioned={(value) => { setCountConditioned(value); setScoreAcknowledged(false); }} calibration={calibration} expected={targetShotCount} acknowledged={scoreAcknowledged} cardTotal={cardTotal} onReviews={setScoreReviews} onAcknowledge={setScoreAcknowledged} onCardTotal={setCardTotal}/>
-                  <ScoreBoard virtualPins={virtualPins} calibration={calibration} unresolvedRegions={unresolvedRegions} shots={shots} stats={stats} targetCount={targetShotCount} analysisWarnings={analysisWarnings} selectedShotId={selectedShotId} onSelectShot={(id) => { setSelectedShotId(id); if (id) goToWorkspace('target'); }} />
+                  <ScoreBoard imageUrl={imageUrl} virtualPins={virtualPins} calibration={calibration} unresolvedRegions={unresolvedRegions} shots={shots} stats={stats} targetCount={targetShotCount} analysisWarnings={analysisWarnings} selectedShotId={selectedShotId} onSelectShot={(id) => { setSelectedShotId(id); if (id) goToWorkspace('target'); }} />
                 </div>
               </div>
             </>
