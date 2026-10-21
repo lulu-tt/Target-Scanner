@@ -1,3 +1,4 @@
+import { VirtualPin, constrainVirtualPin } from '../utils/virtualPins';
 import { UnresolvedRegion } from '../utils/overlapDetection';
 import { shotStatus, statusLabel, statusColor, summarizeEvidence } from '../utils/shotEvidence';
 /**
@@ -13,6 +14,9 @@ import { ISSF_AIR_RIFLE, calculateShotScore } from '../utils/issfSpecs';
 import { ZoomIn, ZoomOut, Trash2, Sliders, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Check, Pencil, CheckCheck, Settings2 } from 'lucide-react';
 
 interface TargetCanvasProps {
+  virtualPins: VirtualPin[];
+  onMoveVirtualPin: (id:string,x:number,y:number)=>void;
+  onDeleteVirtualPin: (id:string)=>void;
   imageUrl: string;
   unresolvedRegions: UnresolvedRegion[];
   calibration: TargetCalibration;
@@ -27,6 +31,7 @@ interface TargetCanvasProps {
 
 export const TargetCanvas: React.FC<TargetCanvasProps> = ({
   imageUrl,
+  virtualPins, onMoveVirtualPin, onDeleteVirtualPin,
   unresolvedRegions,
   calibration,
   onCalibrationChange,
@@ -109,7 +114,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
     ctx.drawImage(bgImage, 0, 0, size, size);
 
     // 2. ISSF 공식 동심원 오버레이 (옵션)
-    if (showRings) {
+    if (showRings && calibration.targetType !== 'blank') {
       ctx.save();
       // 10점 중앙 점
       ctx.beginPath();
@@ -236,7 +241,17 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
         ctx.restore();
       });
     }
-  }, [unresolvedRegions, bgImage, calibration, showRings, showShots, showScoreLabels, showMpi, shots, selectedShotId, draggingShotId, dragCurrentPos, mpi]);
+    if (showShots) virtualPins.forEach((pin,i)=>{
+      const selected=pin.id===selectedShotId;
+      const point=pin.id===draggingShotId&&dragCurrentPos?dragCurrentPos:{x:pin.pixelX,y:pin.pixelY};
+      ctx.save();ctx.globalAlpha=selected?.95:.65;ctx.strokeStyle=selected?'#ef4444':'#a855f7';ctx.fillStyle='rgba(168,85,247,.14)';ctx.lineWidth=selected?3:2;ctx.setLineDash([3,4]);
+      ctx.beginPath();ctx.arc(point.x,point.y,Math.max(6,(calibration.holeRadiusPx??12)*.65),0,Math.PI*2);ctx.fill();ctx.stroke();ctx.setLineDash([]);
+      ctx.beginPath();ctx.moveTo(point.x-4,point.y);ctx.lineTo(point.x+4,point.y);ctx.moveTo(point.x,point.y-4);ctx.lineTo(point.x,point.y+4);ctx.stroke();
+      if(showScoreLabels){ctx.font='bold 11px sans-serif';const text=`가상 V${i+1}`;ctx.fillStyle='rgba(255,255,255,.94)';ctx.fillRect(point.x+7,point.y+1,ctx.measureText(text).width+6,17);ctx.fillStyle='#7e22ce';ctx.fillText(text,point.x+10,point.y+14);}
+      ctx.restore();
+    });
+
+  }, [virtualPins, unresolvedRegions, bgImage, calibration, showRings, showShots, showScoreLabels, showMpi, shots, selectedShotId, draggingShotId, dragCurrentPos, mpi]);
 
   useEffect(() => {
     renderCanvas();
@@ -325,7 +340,9 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
 
     const touchRadius = 22 * 800 / e.currentTarget.getBoundingClientRect().width;
     const hitRadius = Math.max(pelletPxRadius * 1.6, touchRadius);
-    const clickedShot = [...shots].sort((a, b) => Math.hypot(a.pixelX - x, a.pixelY - y) - Math.hypot(b.pixelX - x, b.pixelY - y))
+    const candidates = [...shots, ...virtualPins];
+    const chosen = virtualPins.find(s=>s.id===selectedShotId&&Math.hypot(s.pixelX-x,s.pixelY-y)<=hitRadius);
+    const clickedShot = chosen ?? [...candidates].sort((a, b) => Math.hypot(a.pixelX - x, a.pixelY - y) - Math.hypot(b.pixelX - x, b.pixelY - y))
       .find(s => Math.hypot(s.pixelX - x, s.pixelY - y) <= hitRadius);
 
     if (clickedShot) {
@@ -364,8 +381,9 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
 
     if (draggingShotId) {
       const { x, y } = getCanvasCoords(e);
-      setDragCurrentPos({ x, y });
-      updateMagnifier(x, y);
+      const pin=virtualPins.find(p=>p.id===draggingShotId),region=unresolvedRegions.find(r=>r.id===pin?.regionId);
+      const point=region?constrainVirtualPin(region,x,y):{x,y};
+      if(point){setDragCurrentPos(point);updateMagnifier(point.x,point.y);}
     }
   };
 
@@ -377,6 +395,11 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
     }
 
     if (draggingShotId && dragCurrentPos) {
+      const virtual=virtualPins.find(p=>p.id===draggingShotId);
+      if(virtual){
+        if(Math.hypot(virtual.pixelX-dragCurrentPos.x,virtual.pixelY-dragCurrentPos.y)>.1)onMoveVirtualPin(virtual.id,dragCurrentPos.x,dragCurrentPos.y);
+        setDraggingShotId(null);setDragCurrentPos(null);return;
+      }
       const updatedShots = shots.map((s) => {
         if (s.id === draggingShotId) {
           const scoreData = calculateShotScore(dragCurrentPos.x, dragCurrentPos.y, calibration);
@@ -405,6 +428,8 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
   // 선택된 탄착점 삭제
   const handleDeleteSelected = () => {
     if (!selectedShotId) return;
+    if(virtualPins.some(p=>p.id===selectedShotId)){onDeleteVirtualPin(selectedShotId);return;}
+    if(!shots.some(p=>p.id===selectedShotId)){onSelectShot(null);return;}
     const filtered = shots
       .filter((s) => s.id !== selectedShotId)
       .map((s, idx) => ({ ...s, shotNumber: idx + 1 }));
@@ -413,6 +438,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
   };
 
   const evidence = summarizeEvidence(shots, targetCount);
+  const selectedVirtualIndex=virtualPins.findIndex(p=>p.id===selectedShotId);
 
   return (
     <div className="relative flex flex-col items-center select-none bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-3 sm:p-5 shadow-sm w-full transition-colors">
@@ -420,8 +446,8 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
         <div><h3 className="text-sm font-bold">탄착점 확인</h3><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">후보 {shots.length}개{targetCount > 0 ? ` / 선택 ${targetCount}발` : ' / 자유 발수'}</p></div>
         <button aria-pressed={isEditing} onClick={() => { setIsEditing(!isEditing); setDraggingShotId(null); setDragCurrentPos(null); }} className={`flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-bold ${isEditing ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'}`}>{isEditing ? <CheckCheck size={16} /> : <Pencil size={16} />}{isEditing ? '수정 완료' : '위치 수정'}</button>
       </div>
-      <p role="status" className={`mb-3 w-full rounded-xl px-3 py-2.5 text-xs leading-relaxed ${isEditing ? 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300' : 'bg-slate-50 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{isEditing ? '빈 곳을 탭해 추가 · 핀을 끌어 이동 · 선택 후 삭제' : zoom > 1 ? '확대 중에는 표적을 밀어 이동하세요. 초기화하면 화면을 스크롤할 수 있습니다.' : '사진을 살펴본 후 ‘위치 수정’을 눌러 탄착점을 보정하세요.'}</p>
-      <div aria-label="핀 상태 범례" className="mb-3 flex w-full flex-wrap gap-x-3 gap-y-1 text-xs font-semibold"><span className="text-emerald-700 dark:text-emerald-400">● 감지 {evidence.detected}</span><span className="text-amber-700 dark:text-amber-400">◌ 추정 {evidence.estimated}</span><span className="text-slate-500">□ 미확정 {evidence.unresolved ?? '발수 미입력'}</span>{evidence.manual > 0 && <span className="text-indigo-600 dark:text-indigo-400">● 수동 {evidence.manual}</span>}</div>
+      <p role="status" className={`mb-3 w-full rounded-xl px-3 py-2.5 text-xs leading-relaxed ${isEditing ? 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300' : 'bg-slate-50 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{isEditing ? '빈 곳을 탭해 추가 · 핀을 끌어 이동 · 선택 후 삭제. 가상 핀은 겹친 구멍 안에서만 이동합니다.' : zoom > 1 ? '확대 중에는 표적을 밀어 이동하세요. 초기화하면 화면을 스크롤할 수 있습니다.' : '사진을 살펴본 후 ‘위치 수정’을 눌러 탄착점을 보정하세요.'}</p>
+      <div aria-label="핀 상태 범례" className="mb-3 flex w-full flex-wrap gap-x-3 gap-y-1 text-xs font-semibold"><span className="text-emerald-700 dark:text-emerald-400">● 감지 {evidence.detected}</span><span className="text-amber-700 dark:text-amber-400">◌ 추정 {evidence.estimated}</span><span className="text-slate-500">□ 좌표 미확정 {evidence.unresolved ?? '발수 미입력'}</span><span className="text-purple-600 dark:text-purple-400">⊕ 가상 {virtualPins.length} (실제 감지 아님)</span>{evidence.manual > 0 && <span className="text-indigo-600 dark:text-indigo-400">● 수동 {evidence.manual}</span>}</div>
       <div className="mb-3 w-full rounded-xl bg-slate-50 p-3 text-xs leading-relaxed dark:bg-slate-800">
         <p>표적 보정: {calibration.targetType === 'blank' ? '백지 · 자동 점수 기준 없음' : calibration.method === 'multi-ring' ? `다중 링 ${calibration.ringSupport}개 적합 · 가로/세로 배율 보정` : '초기 중심·크기 · 수동 검토 필요'}</p>
         {calibration.targetType === 'standard' && <p className="mt-1">가로 {calibration.pxPerMm.toFixed(2)} · 세로 {(calibration.pxPerMmY ?? calibration.pxPerMm).toFixed(2)} px/mm</p>}
@@ -456,7 +482,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
           />
         </div>
 
-        {selectedShotId && isEditing && !draggingShotId && <div className="absolute left-2 top-2 flex items-center gap-2 rounded-xl bg-white/95 py-1 pl-3 pr-1 shadow-lg dark:bg-slate-900/95"><span className="text-xs font-bold">#{shots.find(s => s.id === selectedShotId)?.shotNumber}</span><button onClick={handleDeleteSelected} className="flex min-h-11 items-center gap-1.5 rounded-lg bg-red-50 px-3 text-xs font-bold text-red-700 dark:bg-red-950/60 dark:text-red-300"><Trash2 size={16} />선택 핀 삭제</button></div>}
+        {selectedShotId && (selectedVirtualIndex>=0 || shots.some(p=>p.id===selectedShotId)) && isEditing && !draggingShotId && <div className="absolute left-2 top-2 flex items-center gap-2 rounded-xl bg-white/95 py-1 pl-3 pr-1 shadow-lg dark:bg-slate-900/95"><span className="text-xs font-bold">{selectedVirtualIndex>=0?`가상 V${selectedVirtualIndex+1}`:`#${shots.find(s => s.id === selectedShotId)?.shotNumber}`}</span><button onClick={handleDeleteSelected} className="flex min-h-11 items-center gap-1.5 rounded-lg bg-red-50 px-3 text-xs font-bold text-red-700 dark:bg-red-950/60 dark:text-red-300"><Trash2 size={16} />선택 핀 삭제</button></div>}
 
         {/* 손가락에 가려지지 않도록 상단 코너에 뜨는 3.5배 돋보기 */}
         {draggingShotId && (
@@ -469,6 +495,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
         )}
 
       </div>
+      {virtualPins.length>0 && <details className="mt-3 w-full" open={isEditing}><summary className="flex min-h-11 cursor-pointer items-center text-xs font-bold text-purple-700 dark:text-purple-400">가상 추정 핀 {virtualPins.length}개 선택·수정</summary><p className="mb-2 text-xs leading-relaxed text-slate-500">반투명 보라색 점선은 겹침 영역 안의 예시 위치입니다. 실제 감지 위치가 아닙니다. 아래에서 선택한 뒤 끌거나 삭제하세요. 집탄 통계에서 제외됩니다.</p><div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto">{virtualPins.map((pin,i)=><button key={pin.id} data-virtual-pin={pin.id} data-x={pin.pixelX} data-y={pin.pixelY} aria-label={`가상 핀 V${i+1} 선택`} aria-pressed={pin.id===selectedShotId} onClick={()=>{onSelectShot(pin.id===selectedShotId?null:pin.id);setIsEditing(true);setShowShots(true);containerRef.current?.scrollIntoView({block:'center'});}} className={`min-h-11 rounded-xl border px-3 text-xs font-bold ${pin.id===selectedShotId?'border-purple-500 bg-purple-100 text-purple-900 dark:bg-purple-950 dark:text-purple-200':'border-purple-200 text-purple-700 dark:border-purple-800 dark:text-purple-400'}`}>V{i+1}{pin.moved?' · 수정':''}</button>)}</div></details>}
       <div className="mt-3 flex w-full flex-wrap items-center justify-between gap-2">
         <div className="flex items-center rounded-xl bg-slate-100 p-0.5 dark:bg-slate-800">
           <button onClick={() => setZoom(z => Math.max(z - .25, 1))} className="icon-button" aria-label="축소" disabled={zoom <= 1}><ZoomOut size={18} /></button>

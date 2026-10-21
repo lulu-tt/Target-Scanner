@@ -51,10 +51,12 @@ export interface SavedSession {
   shots: ShotPoint[];
   stats: GroupingStats;
   unresolvedRegions?: import('../utils/overlapDetection').UnresolvedRegion[];
+  virtualPinEdits?: import('../utils/virtualPins').VirtualPinEdit[];
+  countConditioned?: boolean;
   scoreReviews?: RegionScoreReview[];
   scoreAcknowledged?: boolean;
   cardTotal?: number | null;
-  reviewedScore?: { complete: boolean; total: number; expected: number; source: 'card-total' | 'located-and-regions' };
+  reviewedScore?: { estimated?: boolean; complete: boolean; total: number; expected: number; source: 'card-total' | 'located-and-regions' };
   calibration?: TargetCalibration;
   analysisWarnings?: string[]; // 자동 분석의 불확실성 안내도 기록과 함께 보존
   targetImage?: string;     // 썸네일 이미지 dataUrl
@@ -66,4 +68,8 @@ export interface RegionScoreReview {
   regionId: string;
   additionalCount: number;
   confirmedTotal?: number;
+  estimatedTotal?: number;
+  source?: 'auto-area' | 'count-conditioned' | 'manual';
+  countRange?: [number, number];
+  explanation?: string;
 }

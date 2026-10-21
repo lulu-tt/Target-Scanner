@@ -46,5 +46,15 @@ export function analyzeNativeRegion(img: HTMLImageElement, calibration: TargetCa
   const fit=splitHoleComponents(components,standard?2.25*calibration.pxPerMm/scale:undefined);
   const mapX=(x:number)=>(x+x0)*scale+ox,mapY=(y:number)=>(y+y0)*scale+oy;
   const shots:ShotPoint[]=fit.fits.map((f,i)=>{const x=mapX(f.x),y=mapY(f.y),s=calculateShotScore(x,y,calibration);return {id:`shot-${i+1}`,shotNumber:i+1,pixelX:x,pixelY:y,offsetX_mm:s.offsetX_mm,offsetY_mm:s.offsetY_mm,distance_mm:s.distanceMm,score:s.score,detectionStatus:f.status,evidence:{componentId:f.componentId,visibleArcDeg:f.visibleArcDeg,residualPx:f.residualPx*scale}};});
-  return {shots,regions:fit.regions.map(r=>({...r,centerX:mapX(r.centerX),centerY:mapY(r.centerY),width:r.width*scale,height:r.height*scale})),radiusPx:fit.radiusPx===null?null:fit.radiusPx*scale,metadata:{sourceWidth:img.width,sourceHeight:img.height,roiWidth:w,roiHeight:h,sampleStep:2,native:true as const}};
+  return {shots,regions:fit.regions.map(r=>{
+    const points=components[Number(r.id.replace('region-',''))]??[];
+    const occupied=new Set(points.map(p=>`${p.x},${p.y}`));
+    let sum=0,n=0; const pinCandidates:{x:number;y:number}[]=[];
+    if(fit.radiusPx)for(let k=0;k<points.length;k+=Math.max(8,Math.ceil(points.length/512))){
+      const p=points[k];let inside=0;
+      for(let a=0;a<8;a++){const x=Math.round((p.x+fit.radiusPx*.7*Math.cos(a*Math.PI/4))/2)*2,y=Math.round((p.y+fit.radiusPx*.7*Math.sin(a*Math.PI/4))/2)*2;if(occupied.has(`${x},${y}`))inside++;}
+      if(inside>=7){pinCandidates.push({x:Math.round(mapX(p.x)*10)/10,y:Math.round(mapY(p.y)*10)/10});if(standard){sum+=calculateShotScore(mapX(p.x),mapY(p.y),calibration).score;n++;}}
+    }
+    return {...r,pinCandidates,areaPx2:r.areaPx2===undefined?undefined:r.areaPx2*scale*scale,referenceRadiusPx:r.referenceRadiusPx===undefined?undefined:r.referenceRadiusPx*scale,scoreEstimatePerShot:n?Math.round(sum/n*10)/10:undefined,centerX:mapX(r.centerX),centerY:mapY(r.centerY),width:r.width*scale,height:r.height*scale};
+  }),radiusPx:fit.radiusPx===null?null:fit.radiusPx*scale,metadata:{sourceWidth:img.width,sourceHeight:img.height,roiWidth:w,roiHeight:h,sampleStep:2,native:true as const}};
 }

@@ -15,6 +15,11 @@ export interface UnresolvedRegion {
   width: number;
   height: number;
   reason: string;
+  areaPx2?: number;
+  referenceRadiusPx?: number;
+  scoreEstimatePerShot?: number;
+  pinCandidates?: {x:number;y:number}[];
+
 }
 
 const median = (values: number[]) => {
@@ -115,7 +120,7 @@ export function splitHoleComponents(components: HolePixel[][], physicalRadiusPx?
     }
     fits.push(...accepted);
     // This is an image region, not a fabricated shot: it never enters scoring or MPI.
-    regions.push({ id: componentId, centerX:c.bounds.left+c.bounds.width/2, centerY:c.bounds.top+c.bounds.height/2, width:c.bounds.width, height:c.bounds.height, reason: accepted.length ? `겹친 구멍에서 원호 근거가 있는 중심 ${accepted.length}개를 추정했습니다. 내부에 가려진 추가 탄착 위치는 미확정입니다.` : '구멍 경계가 부족해 개별 중심을 분리하지 못했습니다.' });
+    regions.push({ areaPx2: c.points.length * 4, referenceRadiusPx: radius, id: componentId, centerX:c.bounds.left+c.bounds.width/2, centerY:c.bounds.top+c.bounds.height/2, width:c.bounds.width, height:c.bounds.height, reason: accepted.length ? `겹친 구멍에서 원호 근거가 있는 중심 ${accepted.length}개를 추정했습니다. 내부에 가려진 추가 탄착 위치는 미확정입니다.` : '구멍 경계가 부족해 개별 중심을 분리하지 못했습니다.' });
   }
   return { fits, regions, radiusPx: radius };
 }

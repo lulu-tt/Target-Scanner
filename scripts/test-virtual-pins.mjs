@@ -1,0 +1,12 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {build} from 'esbuild';
+const b=await build({entryPoints:['src/utils/virtualPins.ts'],bundle:true,write:false,format:'esm',platform:'node'});
+const {createVirtualPins,constrainVirtualPin,reviewsWithVirtualScores}=await import('data:text/javascript;base64,'+Buffer.from(b.outputFiles[0].text).toString('base64'));
+const c={centerX:400,centerY:400,pxPerMm:10,targetType:'standard'};
+const region={id:'a',pinCandidates:[{x:400,y:400},{x:408,y:402},{x:392,y:400},{x:401,y:410}]};
+const review={regionId:'a',additionalCount:3,source:'auto-area',estimatedTotal:30};
+test('Virtual pins only use measured interior points, with deterministic IDs',()=>{const p=createVirtualPins([region],[review],c);assert.equal(p.length,3);for(const s of p)assert.ok(region.pinCandidates.some(q=>q.x===s.pixelX&&q.y===s.pixelY));assert.deepEqual(createVirtualPins([region],[review],c),p);});
+test('No measured interior means no virtual coordinates even when count exists',()=>assert.deepEqual(createVirtualPins([{id:'a'}],[review],c),[]));
+test('Dragging far outside clamps to a measured interior point',()=>{const p=constrainVirtualPin(region,-100,-100);assert.ok(region.pinCandidates.includes(p));const pins=createVirtualPins([region],[review],c,[{id:'virtual:a:0',regionId:'a',pixelX:-100,pixelY:-100,moved:true}]);assert.equal(pins[0].pixelX,p.x);assert.equal(pins[0].moved,true);});
+test('Virtual pin scoring stays a region estimate; manual score override is preserved',()=>{const pins=createVirtualPins([region],[review],c);const r=reviewsWithVirtualScores([{...review,confirmedTotal:29}],pins,c)[0];assert.equal(r.confirmedTotal,29);assert.equal(r.estimatedTotal,Math.round(pins.reduce((s,p)=>s+p.score,0)*10)/10);});
+test('Blank targets never get virtual automatic scores',()=>{const pins=createVirtualPins([region],[review],c);const r=reviewsWithVirtualScores([{...review,estimatedTotal:undefined}],pins,{...c,targetType:'blank'});assert.equal(r[0].estimatedTotal,undefined);});
+test('Explicit zero count stays deleted and scores are not generated for partial layouts',()=>{assert.equal(createVirtualPins([region],[{...review,additionalCount:0}],c).length,0);assert.equal(reviewsWithVirtualScores([review],[],c)[0].estimatedTotal,30);});

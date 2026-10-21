@@ -1,3 +1,5 @@
+import { createVirtualPins, reviewsWithVirtualScores, VirtualPinEdit, virtualId, constrainVirtualPin } from './utils/virtualPins';
+import { proposeRegions, mergeRegionReviews } from './utils/regionProposals';
 import { completeScore } from './utils/scoreCompletion';
 import { ScoreCompletion } from './components/ScoreCompletion';
 import { RegionScoreReview } from './types/target';
@@ -61,10 +63,12 @@ export const App: React.FC = () => {
     pxPerMm: 16.0,
   });
   const [shots, setShots] = useState<ShotPoint[]>([]);
+  const [virtualPinEdits, setVirtualPinEdits] = useState<VirtualPinEdit[]>([]);
+  const [countConditioned, setCountConditioned] = useState(false);
   const [scoreReviews, setScoreReviews] = useState<RegionScoreReview[]>([]);
   const [scoreAcknowledged, setScoreAcknowledged] = useState(false);
   const [cardTotal, setCardTotal] = useState<number | null>(null);
-  const resetScoreReview = () => { setScoreReviews([]); setScoreAcknowledged(false); setCardTotal(null); };
+  const resetScoreReview = () => { setVirtualPinEdits([]); setCountConditioned(false); setScoreReviews([]); setScoreAcknowledged(false); setCardTotal(null); };
   const [unresolvedRegions, setUnresolvedRegions] = useState<UnresolvedRegion[]>([]);
   const [analysisWarnings, setAnalysisWarnings] = useState<string[]>([]);
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
@@ -102,6 +106,24 @@ export const App: React.FC = () => {
   };
 
   // 집탄 통계 계산 (목표 발수 동적 반영)
+  const baseReviews = useMemo(() => mergeRegionReviews(proposeRegions(unresolvedRegions,shots,calibration,targetShotCount,countConditioned),scoreReviews),[unresolvedRegions,shots,calibration,targetShotCount,countConditioned,scoreReviews]);
+  const virtualPins = useMemo(()=>createVirtualPins(unresolvedRegions,baseReviews,calibration,virtualPinEdits),[unresolvedRegions,baseReviews,calibration,virtualPinEdits]);
+  const effectiveReviews = useMemo(()=>reviewsWithVirtualScores(baseReviews,virtualPins,calibration),[baseReviews,virtualPins,calibration]);
+  const moveVirtualPin = (id:string,x:number,y:number) => {
+    const pin=virtualPins.find(p=>p.id===id),region=unresolvedRegions.find(r=>r.id===pin?.regionId);
+    if(!pin||!region)return;const point=constrainVirtualPin(region,x,y);if(!point)return;
+    setVirtualPinEdits(prev=>[...prev.filter(e=>e.id!==id),{id,regionId:pin.regionId,pixelX:point.x,pixelY:point.y,moved:true}]);
+    setScoreReviews(prev=>prev.map(r=>r.regionId===pin.regionId?{...r,confirmedTotal:undefined}:r));
+    setScoreAcknowledged(false);
+  };
+  const deleteVirtualPin = (id:string) => {
+    const pin=virtualPins.find(p=>p.id===id);if(!pin)return;
+    const remaining=virtualPins.filter(p=>p.regionId===pin.regionId&&p.id!==id);
+    const review=effectiveReviews.find(r=>r.regionId===pin.regionId);if(!review)return;
+    setVirtualPinEdits(prev=>[...prev.filter(p=>p.regionId!==pin.regionId),...remaining.map((p,i)=>({id:virtualId(pin.regionId,i),regionId:pin.regionId,pixelX:p.pixelX,pixelY:p.pixelY,moved:p.moved}))]);
+    setScoreReviews(prev=>[...prev.filter(r=>r.regionId!==pin.regionId),{...review,source:'manual',additionalCount:remaining.length,confirmedTotal:undefined,estimatedTotal:calibration.targetType==='standard'?Math.round(remaining.reduce((sum,p)=>sum+p.score,0)*10)/10:undefined}]);
+    setSelectedShotId(null);setScoreAcknowledged(false);
+  };
   const stats = useMemo(() => calculateGroupingStats(shots, targetShotCount), [shots, targetShotCount]);
 
   // 토스트 메시지
@@ -281,8 +303,9 @@ export const App: React.FC = () => {
       analysisWarnings: [...analysisWarnings],
       calibration: { ...calibration },
       unresolvedRegions: [...unresolvedRegions],
-      scoreReviews, scoreAcknowledged, cardTotal,
-      reviewedScore: (()=>{ const r=completeScore(shots,unresolvedRegions,scoreReviews,targetShotCount,calibration,scoreAcknowledged,cardTotal);return {complete:r.complete,total:r.total,expected:targetShotCount,source:r.override?'card-total':'located-and-regions'}; })(),
+      virtualPinEdits,
+      scoreReviews: effectiveReviews, countConditioned, scoreAcknowledged, cardTotal,
+      reviewedScore: (()=>{ const r=completeScore(shots,unresolvedRegions,effectiveReviews,targetShotCount,calibration,scoreAcknowledged,cardTotal);return {estimated:r.hasEstimates&&!r.override,complete:r.complete,total:r.total,expected:targetShotCount,source:r.override?'card-total':'located-and-regions'}; })(),
     };
 
     const updated = [newSession, ...savedSessions];
@@ -306,6 +329,8 @@ export const App: React.FC = () => {
     setMobileView('target');
     if (session.targetImage) setImageUrl(session.targetImage);
     setShots(session.shots);
+    setVirtualPinEdits(session.virtualPinEdits ?? []);
+    setCountConditioned(session.countConditioned ?? false);
     setScoreReviews(session.scoreReviews ?? []); setScoreAcknowledged(session.scoreAcknowledged ?? false); setCardTotal(session.cardTotal ?? null);
     setUnresolvedRegions(session.unresolvedRegions ?? []);
     setAnalysisWarnings(session.analysisWarnings ?? ['이전 버전 기록은 임의 보충된 탄착점을 포함할 수 있습니다. 원본 사진으로 다시 분석해주세요.']);
@@ -394,11 +419,11 @@ export const App: React.FC = () => {
               </div>
               <div className="grid min-w-0 items-start gap-5 lg:grid-cols-12">
                 <div className={`min-w-0 lg:col-span-7 lg:block ${mobileView === 'target' ? 'block' : 'hidden'}`}>
-                  <TargetCanvas unresolvedRegions={unresolvedRegions} imageUrl={imageUrl} calibration={calibration} onCalibrationChange={handleCalibrationChange} shots={shots} selectedShotId={selectedShotId} onShotsChange={(next) => { setShots(next); resetScoreReview(); }} onSelectShot={setSelectedShotId} mpi={{ x_mm: stats.mpiX_mm, y_mm: stats.mpiY_mm }} targetCount={targetShotCount} />
+                  <TargetCanvas virtualPins={virtualPins} onMoveVirtualPin={moveVirtualPin} onDeleteVirtualPin={deleteVirtualPin} unresolvedRegions={unresolvedRegions} imageUrl={imageUrl} calibration={calibration} onCalibrationChange={handleCalibrationChange} shots={shots} selectedShotId={selectedShotId} onShotsChange={(next) => { setShots(next); resetScoreReview(); }} onSelectShot={setSelectedShotId} mpi={{ x_mm: stats.mpiX_mm, y_mm: stats.mpiY_mm }} targetCount={targetShotCount} />
                   <button onClick={() => goToWorkspace('results')} className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 text-sm font-bold text-white dark:bg-slate-800 lg:hidden">분석 결과 확인 <ArrowRight size={17} /></button>
                 </div>
                 <div className={`min-w-0 space-y-4 lg:col-span-5 lg:block ${mobileView === 'results' ? 'block' : 'hidden'}`}>
-                  <ScoreCompletion shots={shots} regions={unresolvedRegions} reviews={scoreReviews} calibration={calibration} expected={targetShotCount} acknowledged={scoreAcknowledged} cardTotal={cardTotal} onReviews={setScoreReviews} onAcknowledge={setScoreAcknowledged} onCardTotal={setCardTotal}/>
+                  <ScoreCompletion shots={shots} regions={unresolvedRegions} reviews={effectiveReviews} conditioned={countConditioned} onConditioned={(value) => { setCountConditioned(value); setScoreAcknowledged(false); }} calibration={calibration} expected={targetShotCount} acknowledged={scoreAcknowledged} cardTotal={cardTotal} onReviews={setScoreReviews} onAcknowledge={setScoreAcknowledged} onCardTotal={setCardTotal}/>
                   <ScoreBoard unresolvedRegions={unresolvedRegions} shots={shots} stats={stats} targetCount={targetShotCount} analysisWarnings={analysisWarnings} selectedShotId={selectedShotId} onSelectShot={(id) => { setSelectedShotId(id); if (id) goToWorkspace('target'); }} />
                 </div>
               </div>

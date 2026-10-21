@@ -1,0 +1,42 @@
+const fs=await import('node:fs/promises'),path=await import('node:path'),{fileURLToPath}=await import('node:url');
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const task=await taskSpace(globalThis.targetScannerTaskSpace??'Target Scanner virtual pins 20261021'),page=task.page('p1');
+const files=(await fs.readdir(root)).filter(n=>/^KakaoTalk_Photo_.*\.jpeg$/.test(n)).sort(),checks=[],photos=[];
+const assert=(x,s)=>{if(!x)throw Error(s);checks.push(s);};
+const click=async s=>{await page.evaluate(s=>{const role=s.match(/^loc=role:button\[name="(.+)"\]$/);const el=role?[...document.querySelectorAll('button')].find(b=>b.getClientRects().length&&(b.getAttribute('aria-label')===role[1]||b.textContent?.trim()===role[1])):!s.includes('>>')&&!s.includes(':text-is')?document.querySelector(s):null;el?.scrollIntoView({block:'center'});},s);await page.click(s);};
+const pinState=()=>page.evaluate(()=>[...document.querySelectorAll('[data-virtual-pin]')].map(b=>({id:b.dataset.virtualPin,x:Number(b.dataset.x),y:Number(b.dataset.y),text:b.textContent})));
+await fs.mkdir(root+'/outputs/virtual-pins',{recursive:true});
+await page.cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+for(const [i,name] of files.entries()){
+ await page.goto('http://127.0.0.1:5173');const expected=i===0||i===5?10:20;
+ const data=await page.evaluate(async({name,expected})=>{const {processTargetImage}=await import('/src/utils/visionProcessor.ts');const r=await processTargetImage('/'+encodeURIComponent(name),undefined,{targetCount:expected});return {name,expected,regions:r.unresolvedRegions,located:r.detectedShots.length};},{name,expected});
+ await page.setInputFiles('input[aria-label="앨범 사진 선택"]',[root+'/'+name]);await page.waitForFunction(()=>document.querySelector('button[aria-pressed]')?.disabled===false);await click(`loc=role:button[name="${expected}발"]`);
+ await page.waitForFunction(()=>document.querySelectorAll('[data-virtual-pin]').length>0,undefined,{timeout:60000});
+ let pins=await pinState();assert(pins.length>0,`Photo ${i+1}: virtual pins generated from automatic proposals`);
+ assert(pins.every(p=>data.regions.some(r=>r.pinCandidates?.some(q=>q.x===p.x&&q.y===p.y))),`Photo ${i+1}: every virtual center lies in native hole mask`);
+ const actual=await page.evaluate(()=>document.querySelector('tbody').rows.length);assert(actual===data.located,`Photo ${i+1}: real pin table excludes virtual pins`);
+ await click('loc=role:button[name="분석 결과"]');await click('input[aria-label="미배정 탄착 모두 겹침으로 확인"]');
+ await click('loc=role:button[name="표적 보정"]');pins=await pinState();assert(pins.length+actual===expected,`Photo ${i+1}: virtual count visualizes area allocation once`);
+ await click('loc=role:button[name="위치 수정"]');await click('loc=role:button[name="가상 핀 V1 선택"]');
+ await page.evaluate(()=>document.querySelector('canvas[aria-label="표적 사진과 탄착점"]').scrollIntoView({block:'center'}));
+ const touch=await page.evaluate(()=>{const c=document.querySelector('canvas[aria-label="표적 사진과 탄착점"]').getBoundingClientRect(),b=document.querySelector('[data-virtual-pin]');return {start:{x:c.left+Number(b.dataset.x)*c.width/800,y:c.top+Number(b.dataset.y)*c.height/800},end:{x:c.left+10,y:c.top+10}};});
+ await page.cdp('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+ await page.cdp('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...touch.start,id:1}]});await page.cdp('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{...touch.end,id:1}]});await page.cdp('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+ await page.waitForFunction(()=>document.querySelector('[data-virtual-pin]').textContent.includes('수정'));
+ const moved=await pinState();assert(moved.length===pins.length&&moved[0].text.includes('수정'),`Photo ${i+1}: touch drag edits virtual pin without creating a real pin`);
+ assert(data.regions.some(r=>r.pinCandidates?.some(q=>q.x===moved[0].x&&q.y===moved[0].y)),`Photo ${i+1}: dragging onto blank paper snaps back into hole mask`);
+ await click('loc=role:button[name="가상 핀 V2 선택"]');
+ await click('loc=role:button[name="선택 핀 삭제"]');let after=await pinState();assert(after[0].x===moved[0].x&&after[0].y===moved[0].y,`Photo ${i+1}: deleting another pin preserves moved virtual position`);assert(after.length===pins.length-1,`Photo ${i+1}: deleting virtual pin reduces additional count exactly once`);
+ assert(await page.evaluate(n=>document.querySelector('tbody').rows.length===n,actual),`Photo ${i+1}: move/delete leaves actual-shot grouping input unchanged`);
+ await click('loc=role:button[name="수정 완료"]');
+ await page.evaluate(()=>document.querySelector('canvas[aria-label="표적 사진과 탄착점"]').scrollIntoView({block:'center'}));await page.screenshot({path:root+`/outputs/virtual-pins/photo-${i+1}.png`});
+ for(const width of [320,390,1440]){await page.cdp('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<768});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Photo ${i+1}: no page overflow at ${width}px`);}
+ await page.cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ await click('loc=role:button[name="기록 저장"]');const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('targetscan_sessions'))[0]);console.log('Test record:',saved.id);
+ assert(saved.shots.length===actual&&saved.stats.totalShots===actual&&saved.virtualPinEdits.some(e=>e.moved),`Photo ${i+1}: saved real-shot stats never include virtual pins`);
+ await page.click('nav[aria-label="주요 작업"] button >> nth=2');await page.click(`[data-session-id="${saved.id}"] button:text-is("열기")`);
+ const restored=await pinState();assert(restored[0].text.includes('수정'),`Photo ${i+1}: moved virtual status survives restore`);assert(JSON.stringify(restored.map(p=>[p.id,p.x,p.y]))===JSON.stringify(after.map(p=>[p.id,p.x,p.y])),`Photo ${i+1}: deleted pin stays deleted and remaining layout survives restore`);
+ await page.click('nav[aria-label="주요 작업"] button >> nth=2');await page.click(`[data-session-id="${saved.id}"] button[title="기록 삭제"]`);await click('button[aria-label="기록 닫기"]');
+ photos.push({...data,initialPins:pins.length,afterDelete:after.length});
+}
+await fs.writeFile(root+'/outputs/virtual-pins/results.json',JSON.stringify({checks,photos,scope:'Virtual placements are schematic, not ground-truth shot coordinates or score accuracy'},null,2));console.log({passed:checks.length,photos:photos.map(p=>({name:p.name,actual:p.located,virtual:p.initialPins,afterDelete:p.afterDelete}))});

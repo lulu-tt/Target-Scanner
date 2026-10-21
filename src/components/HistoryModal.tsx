@@ -65,7 +65,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="text-base font-black text-slate-900 dark:text-white flex items-center gap-1">
                       <Award className="w-4 h-4 text-amber-500" />
-                      {(session.reviewedScore?.complete ? session.reviewedScore.total : session.stats.totalScore).toFixed(1)}점 · {session.reviewedScore?.complete ? '사용자 확인' : '좌표 참고 합계'}
+                      {(session.reviewedScore?.complete ? session.reviewedScore.total : session.stats.totalScore).toFixed(1)}점 · {session.reviewedScore?.complete ? (session.reviewedScore.estimated?'사용자 확인 추정':'사용자 확인') : '좌표 참고 합계'}
                     </span>
                     <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
                       좌표 평균 {session.stats.averageScore.toFixed(2)}

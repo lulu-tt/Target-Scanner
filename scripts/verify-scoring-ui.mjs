@@ -29,6 +29,8 @@ for(const [i,p] of photos.entries()){
   await click('summary:text-is("별도로 채점한 전체 총점 입력")');
   await page.fill('input[aria-label="별도 확인 전체 총점"]',String(p.expected*9));fixtureTotal=p.expected*9;
  }else{
+  const regionCount=await page.evaluate(()=>document.querySelectorAll('input[aria-label$="추가 발수"]').length);
+  for(let n=1;n<=regionCount;n++)await page.fill(`input[aria-label="영역 ${n} 추가 발수"]`,'0');
   const missing=p.expected-located;
   await page.fill('input[aria-label="영역 1 추가 발수"]',String(missing));
   await page.fill('input[aria-label="영역 1 확인 점수"]',String(missing*9));
