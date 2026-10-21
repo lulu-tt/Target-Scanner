@@ -9,7 +9,7 @@ await click('loc=role:button[name="추정 핀 E1 선택"]');await click('loc=rol
 await p.evaluate(()=>document.querySelector('canvas[aria-label="표적 사진과 탄착점"]').scrollIntoView({block:'center'}));await p.screenshot({path:root+'/outputs/virtual-pins/zoom-6.png'});await click('loc=role:button[name="확대 초기화"]');
 const initial=await count();for(let i=0;i<initial;i++){if(!await p.evaluate(()=>document.querySelector('[data-virtual-pin]')?.getAttribute('aria-pressed')==='true'))await click('loc=role:button[name="추정 핀 E1 선택"]');await click('loc=role:button[name="선택 핀 삭제"]');}
 assert(await count()===0,'Deleting all virtual pins leaves zero, without automatic refill');
-assert(await p.evaluate(()=>document.querySelector('tbody').rows.length===6),'All virtual deletions leave six real coordinate candidates');
+assert(await p.evaluate(()=>document.querySelectorAll('tbody [data-detail-source="image"]').length===6),'All virtual deletions leave six real coordinate candidates');
 await click('loc=role:button[name="수정 완료"]');await click('loc=role:button[name="분석 결과"]');
 assert(await p.evaluate(()=>[...document.querySelectorAll('input[aria-label$="확인 점수"]')].every(e=>e.value===''||Number(e.value)===0)),'Zero-count regions never show a stale positive virtual score');
 await click('input[aria-label="부족 발수 겹침 가정"]');await click('input[aria-label="부족 발수 겹침 가정"]');assert(await count()===0,'Explicitly deleted counts survive assumption toggles');

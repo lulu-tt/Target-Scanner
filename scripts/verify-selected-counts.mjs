@@ -12,7 +12,7 @@ for(const photo of ['005','006']){
   await p.waitForFunction(n=>{const e=document.querySelector('[aria-label="선택 발수 추정 총점"]');return e?.dataset.estimateReady==='true'&&e.textContent.includes(`${n}발 기준`);},count,{timeout:60000});
   assert(await p.evaluate(()=>document.querySelector('input[aria-label="부족 발수 겹침 가정"]').checked),`${photo}/${count}: missing shots assumed overlapping by default`);
   assert(await p.evaluate(()=>!document.querySelector('input[aria-label="발수와 점수 검토 완료"]').checked&&!document.querySelector('input[aria-label="링 보정 확인"]').checked),`${photo}/${count}: full estimate available without acknowledgment or ring checkbox`);
-  const virtual=await p.evaluate(()=>document.querySelectorAll('[data-virtual-pin]').length),located=await p.evaluate(()=>document.querySelector('tbody').rows.length);
+  const virtual=await p.evaluate(()=>document.querySelectorAll('[data-virtual-pin]').length),located=await p.evaluate(()=>document.querySelectorAll('tbody [data-detail-source="image"]').length);
   assert(virtual+located===count,`${photo}/${count}: real plus virtual pins equal selected count`);
   await click('loc=role:button[name="분석 결과"]');
   const ui=await p.evaluate(()=>({total:Number(document.querySelector('[aria-label="선택 발수 추정 총점"]').dataset.estimateTotal),text:document.querySelector('[aria-label="선택 발수 추정 총점"]').textContent}));

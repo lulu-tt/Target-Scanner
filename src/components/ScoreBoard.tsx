@@ -7,14 +7,16 @@ import { shotStatus, statusLabel, statusColor, summarizeDisplayEvidence } from '
  *       라이트/다크 듀얼 테마 지원
  */
 
-import React from 'react';
-import { ShotPoint, GroupingStats } from '../types/target';
-import { getSightAdjustmentGuide } from '../utils/issfSpecs';
+import React, { useMemo } from 'react';
+import { VirtualPin } from '../utils/virtualPins';
+import { ShotPoint, GroupingStats, TargetCalibration } from '../types/target';
+import { getSightAdjustmentGuide, calculateShotScore } from '../utils/issfSpecs';
 import { Target, Compass, Award, Sliders } from 'lucide-react';
 
 interface ScoreBoardProps {
   shots: ShotPoint[];
-  estimatedPinCount: number;
+  virtualPins: VirtualPin[];
+  calibration: TargetCalibration;
   unresolvedRegions: UnresolvedRegion[];
   stats: GroupingStats;
   targetCount: number;
@@ -25,7 +27,8 @@ interface ScoreBoardProps {
 
 export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   shots,
-  estimatedPinCount,
+  virtualPins,
+  calibration,
   unresolvedRegions,
   stats,
   targetCount,
@@ -33,7 +36,20 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   selectedShotId,
   onSelectShot,
 }) => {
-  const evidence = summarizeDisplayEvidence(shots, estimatedPinCount, targetCount);
+  const evidence = summarizeDisplayEvidence(shots, virtualPins.length, targetCount);
+  const detailRows = useMemo(() => [
+    ...shots.map(shot => ({ id: shot.id, displayId: `#${shot.shotNumber}`, source: 'image' as const,
+      label: statusLabel[shotStatus(shot)], color: statusColor[shotStatus(shot)], score: shot.score,
+      distance_mm: shot.distance_mm, offsetX_mm: shot.offsetX_mm, offsetY_mm: shot.offsetY_mm,
+      evidence: shotStatus(shot) === 'estimated' ? shot.evidence : undefined })),
+    ...virtualPins.map((pin, index) => {
+      const position = calculateShotScore(pin.pixelX, pin.pixelY, calibration);
+      return { id: pin.id, displayId: `E${index + 1}`, source: 'estimate' as const,
+        label: '추정', color: '#9333ea', score: pin.score,
+        distance_mm: position.distanceMm, offsetX_mm: position.offsetX_mm, offsetY_mm: position.offsetY_mm,
+        evidence: undefined };
+    }),
+  ], [shots, virtualPins, calibration]);
   const sightGuide = getSightAdjustmentGuide(stats.mpiX_mm, stats.mpiY_mm);
 
   // 최고점 / 최저점 탄환
@@ -192,10 +208,10 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
         </div>
 
         <div className="space-y-2 p-3 sm:hidden">
-          {shots.length === 0 && <p className="py-6 text-center text-sm text-slate-500">표적 보정에서 탄착점을 직접 추가할 수 있어요.</p>}
-          {shots.map(shot => <button key={shot.id} onClick={() => onSelectShot(shot.id === selectedShotId ? null : shot.id)} aria-label={`${shot.shotNumber}번 탄착점 ${shot.score.toFixed(1)}점, 표적에서 확인`} aria-pressed={shot.id === selectedShotId} className={`flex min-h-20 w-full items-center gap-3 rounded-2xl border p-3 text-left transition ${shot.id === selectedShotId ? 'border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-950/30' : 'border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50'}`}>
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-xs font-bold text-slate-500 dark:bg-slate-800">#{shot.shotNumber}</span>
-            <div className="min-w-0 flex-1"><p className="text-xs font-semibold text-slate-600 dark:text-slate-300">중심거리 {shot.distance_mm.toFixed(2)}mm</p><p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">X {shot.offsetX_mm.toFixed(1)} · Y {shot.offsetY_mm.toFixed(1)}mm <span className="ml-1">{statusLabel[shotStatus(shot)]}</span></p>{shotStatus(shot) === 'estimated' && shot.evidence && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">원호 {shot.evidence.visibleArcDeg}° 근거 · 반경 오차 {shot.evidence.residualPx.toFixed(1)}px</p>}</div>
+          {detailRows.length === 0 && <p className="py-6 text-center text-sm text-slate-500">표적 보정에서 탄착점을 직접 추가할 수 있어요.</p>}
+          {detailRows.map(shot => <button key={shot.id} data-detail-id={shot.id} data-detail-source={shot.source} data-detail-score={shot.score} onClick={() => onSelectShot(shot.id === selectedShotId ? null : shot.id)} aria-label={`${shot.label} ${shot.displayId} ${shot.score.toFixed(1)}점, 표적에서 확인`} aria-pressed={shot.id === selectedShotId} className={`flex min-h-20 w-full items-center gap-3 rounded-2xl border p-3 text-left transition ${shot.id === selectedShotId ? 'border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-950/30' : 'border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50'}`}>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-xs font-bold text-slate-500 dark:bg-slate-800" style={{color:shot.color}}>{shot.displayId}</span>
+            <div className="min-w-0 flex-1"><p className="text-xs font-semibold text-slate-600 dark:text-slate-300">중심거리 {shot.distance_mm.toFixed(2)}mm</p><p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">X {shot.offsetX_mm.toFixed(1)} · Y {shot.offsetY_mm.toFixed(1)}mm <span className="ml-1" style={{color:shot.color}}>{shot.label}</span></p>{shot.evidence && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">원호 {shot.evidence.visibleArcDeg}° 근거 · 반경 오차 {shot.evidence.residualPx.toFixed(1)}px</p>}</div>
             <span className="text-xl font-extrabold tabular-nums">{shot.score.toFixed(1)}<span className="ml-0.5 text-[10px] font-medium text-slate-500">점</span></span>
           </button>)}
         </div>
@@ -212,15 +228,18 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
-              {shots.map((shot) => {
+              {detailRows.map((shot) => {
                 const isSelected = shot.id === selectedShotId;
                 const isTen = shot.score >= 10.0;
 
                 return (
                   <tr
                     key={shot.id}
+                    data-detail-id={shot.id}
+                    data-detail-source={shot.source}
+                    data-detail-score={shot.score}
                     tabIndex={0}
-                    aria-label={`${shot.shotNumber}번 탄착점 선택`}
+                    aria-label={`${shot.label} ${shot.displayId} 선택`}
                     onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectShot(isSelected ? null : shot.id); } }}
                     onClick={() => onSelectShot(isSelected ? null : shot.id)}
                     className={`cursor-pointer transition-colors active:bg-red-500/20 ${
@@ -229,7 +248,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
                         : 'hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-700 dark:text-slate-300'
                     }`}
                   >
-                    <td className="py-3 px-4 font-bold text-slate-400">#{shot.shotNumber}</td>
+                    <td className="py-3 px-4 font-bold text-slate-400">{shot.displayId}</td>
                     <td className="py-3 px-4">
                       <span
                         className={`inline-block px-2.5 py-0.5 rounded-lg font-black text-xs ${
@@ -251,7 +270,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
                       {shot.offsetY_mm >= 0 ? `+${shot.offsetY_mm.toFixed(2)}` : shot.offsetY_mm.toFixed(2)}mm
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <span className="text-xs font-bold" style={{color:statusColor[shotStatus(shot)]}}>{statusLabel[shotStatus(shot)]}</span>
+                      <span className="text-xs font-bold" style={{color:shot.color}}>{shot.label}</span>
                     </td>
                   </tr>
                 );

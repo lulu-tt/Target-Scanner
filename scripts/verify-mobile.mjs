@@ -18,7 +18,7 @@ const assert = (condition, label) => { if (!condition) throw new Error(label); c
 const viewport = async (width, height = 844) => {
   await page.cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 768 });
 };
-const count = () => page.evaluate(() => document.querySelector('tbody')?.rows.length ?? 0);
+const count = () => page.evaluate(() => document.querySelectorAll('tbody [data-detail-source="image"]').length ?? 0);
 const layout = () => page.evaluate(() => ({
   width: innerWidth, scrollWidth: document.documentElement.scrollWidth,
   shortButtons: [...document.querySelectorAll('button')].filter(el => el.getClientRects().length && !el.disabled && el.getBoundingClientRect().height < 43).map(el => el.textContent?.trim()),

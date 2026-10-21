@@ -11,7 +11,7 @@ for(const p of photos){
  await page.setInputFiles('input[aria-label="앨범 사진 선택"]',[root+'/'+p.name]);
  await page.waitForFunction(()=>document.querySelector('button[aria-pressed]')?.disabled===false);
  await page.click(`loc=role:button[name="${p.expected}발"]`);
- await page.waitForFunction(n=>document.querySelector('tbody')?.rows.length===n,p.shots.length);
+ await page.waitForFunction(n=>document.querySelectorAll('tbody [data-detail-source="image"]').length===n,p.shots.length);
  const text=await page.evaluate(()=>document.querySelector('[aria-label="핀 상태 범례"]').textContent);
  for(const [label,key] of [['감지','detected'],['추정','estimated'],['미확정','unresolved']])if(!text.includes(`${label} ${p.summary[key]}`))throw Error(p.name+' '+label);
  checks.push(p.name+': UI detected/estimated/unresolved match fitted results');

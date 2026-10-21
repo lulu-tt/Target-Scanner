@@ -27,7 +27,7 @@ await p.waitForFunction(()=>document.querySelector('[data-virtual-pin]').textCon
 const moved=await state();assert(Math.abs(moved.x-(before.x+(moved.pins.reduce((s,p)=>s+p.x,0)-before.pins.reduce((s,p)=>s+p.x,0))/before.n))<1e-9&&Math.abs(moved.y-(before.y+(moved.pins.reduce((s,p)=>s+p.y,0)-before.pins.reduce((s,p)=>s+p.y,0))/before.n))<1e-9,'Touch move recomputes whole mean');
 await click('loc=role:button[name="추정 핀 E2 선택"]');const deleted=moved.pins[1];await click('loc=role:button[name="선택 핀 삭제"]');const after=await state();assert(after.n===29&&after.complete==='false'&&after.text.includes('부분'), 'Deletion displays partial center instead of a 30-shot full estimate');
 assert(Math.abs(after.x-(moved.x*30-deleted.x)/29)<1e-9&&Math.abs(after.y-(moved.y*30-deleted.y)/29)<1e-9,'Deletion removes exactly one coordinate from the mean');
-assert(await p.evaluate(()=>document.querySelector('tbody').rows.length===6),'Image-only shot statistics stay separate');
+assert(await p.evaluate(()=>document.querySelectorAll('tbody [data-detail-source="image"]').length===6),'Image-only shot statistics stay separate');
 await click('loc=role:button[name="수정 완료"]');
 for(const width of [320,390,1440]){await p.cdp('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<768});assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`No horizontal overflow at ${width}px`);}
 await p.cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await p.evaluate(()=>document.querySelector('[aria-label="추정 탄착중심"]').scrollIntoView({block:'center'}));

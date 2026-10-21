@@ -17,7 +17,7 @@ for(const [i,p] of photos.entries()){
  await page.waitForFunction(()=>document.querySelector('button[aria-pressed]')?.disabled===false);
  await click(`loc=role:button[name="${p.expected}발"]`);
  await page.waitForFunction(()=>document.querySelector('[aria-label="총점 완성"]')&&document.body.textContent.includes('원본 '),undefined,{timeout:60000});
- const located=await page.evaluate(()=>document.querySelector('tbody').rows.length);
+ const located=await page.evaluate(()=>document.querySelectorAll('tbody [data-detail-source="image"]').length);
  if(i>=4){
   assert(await page.evaluate(()=>document.body.innerText.includes('다중 링 4개 적합')),`Photo ${i+1}: multi-ring calibration shown`);
   await click('input[aria-label="링 보정 확인"]');
@@ -38,7 +38,7 @@ for(const [i,p] of photos.entries()){
  }
  await click('input[aria-label="발수와 점수 검토 완료"]');
  assert(await page.evaluate(()=>document.querySelector('[data-score-complete]').dataset.scoreComplete==='true'),`Photo ${i+1}: explicit user review completes total (fixture, not ground-truth scoring)`);
- assert(await page.evaluate(n=>document.querySelector('tbody').rows.length===n,located),`Photo ${i+1}: area score never creates fake pins`);
+ assert(await page.evaluate(n=>document.querySelectorAll('tbody [data-detail-source="image"]').length===n,located),`Photo ${i+1}: area score never creates fake pins`);
  for(const width of [320,390,1440]){await page.cdp('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<768});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Photo ${i+1}: no overflow at ${width}px`);}
  await page.cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
  await center('[aria-label="총점 완성"]');await page.screenshot({path:root+`/outputs/native/ui-${i+1}.png`});

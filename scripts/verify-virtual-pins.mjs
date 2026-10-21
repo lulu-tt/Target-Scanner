@@ -14,7 +14,7 @@ for(const [i,name] of files.entries()){
  await page.waitForFunction(()=>document.querySelectorAll('[data-virtual-pin]').length>0,undefined,{timeout:60000});
  let pins=await pinState();assert(pins.length>0,`Photo ${i+1}: virtual pins generated from automatic proposals`);
  assert(pins.every(p=>data.regions.some(r=>r.pinCandidates?.some(q=>q.x===p.x&&q.y===p.y))),`Photo ${i+1}: every virtual center lies in native hole mask`);
- const actual=await page.evaluate(()=>document.querySelector('tbody').rows.length);assert(actual===data.located,`Photo ${i+1}: real pin table excludes virtual pins`);
+ const actual=await page.evaluate(()=>document.querySelectorAll('tbody [data-detail-source="image"]').length);assert(actual===data.located,`Photo ${i+1}: real pin table excludes virtual pins`);
  await click('loc=role:button[name="분석 결과"]');if(!await page.evaluate(()=>document.querySelector('input[aria-label="부족 발수 겹침 가정"]').checked))await click('input[aria-label="부족 발수 겹침 가정"]');
  await click('loc=role:button[name="표적 보정"]');pins=await pinState();assert(pins.length+actual===expected,`Photo ${i+1}: virtual count visualizes area allocation once`);
  await click('loc=role:button[name="위치 수정"]');await click('loc=role:button[name="추정 핀 E1 선택"]');
@@ -27,7 +27,7 @@ for(const [i,name] of files.entries()){
  assert(data.regions.some(r=>r.pinCandidates?.some(q=>q.x===moved[0].x&&q.y===moved[0].y)),`Photo ${i+1}: dragging onto blank paper snaps back into hole mask`);
  await click('loc=role:button[name="추정 핀 E2 선택"]');
  await click('loc=role:button[name="선택 핀 삭제"]');let after=await pinState();assert(after[0].x===moved[0].x&&after[0].y===moved[0].y,`Photo ${i+1}: deleting another pin preserves moved virtual position`);assert(after.length===pins.length-1,`Photo ${i+1}: deleting virtual pin reduces additional count exactly once`);
- assert(await page.evaluate(n=>document.querySelector('tbody').rows.length===n,actual),`Photo ${i+1}: move/delete leaves actual-shot grouping input unchanged`);
+ assert(await page.evaluate(n=>document.querySelectorAll('tbody [data-detail-source="image"]').length===n,actual),`Photo ${i+1}: move/delete leaves actual-shot grouping input unchanged`);
  await click('loc=role:button[name="수정 완료"]');
  await page.evaluate(()=>document.querySelector('canvas[aria-label="표적 사진과 탄착점"]').scrollIntoView({block:'center'}));await page.screenshot({path:root+`/outputs/virtual-pins/photo-${i+1}.png`});
  for(const width of [320,390,1440]){await page.cdp('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<768});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Photo ${i+1}: no page overflow at ${width}px`);}

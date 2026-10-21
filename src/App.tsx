@@ -424,7 +424,7 @@ export const App: React.FC = () => {
                 </div>
                 <div className={`min-w-0 space-y-4 lg:col-span-5 lg:block ${mobileView === 'results' ? 'block' : 'hidden'}`}>
                   <ScoreCompletion shots={shots} regions={unresolvedRegions} reviews={effectiveReviews} conditioned={countConditioned} onConditioned={(value) => { setCountConditioned(value); setScoreAcknowledged(false); }} calibration={calibration} expected={targetShotCount} acknowledged={scoreAcknowledged} cardTotal={cardTotal} onReviews={setScoreReviews} onAcknowledge={setScoreAcknowledged} onCardTotal={setCardTotal}/>
-                  <ScoreBoard estimatedPinCount={virtualPins.length} unresolvedRegions={unresolvedRegions} shots={shots} stats={stats} targetCount={targetShotCount} analysisWarnings={analysisWarnings} selectedShotId={selectedShotId} onSelectShot={(id) => { setSelectedShotId(id); if (id) goToWorkspace('target'); }} />
+                  <ScoreBoard virtualPins={virtualPins} calibration={calibration} unresolvedRegions={unresolvedRegions} shots={shots} stats={stats} targetCount={targetShotCount} analysisWarnings={analysisWarnings} selectedShotId={selectedShotId} onSelectShot={(id) => { setSelectedShotId(id); if (id) goToWorkspace('target'); }} />
                 </div>
               </div>
             </>

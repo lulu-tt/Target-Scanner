@@ -23,7 +23,7 @@ try{
  await p.waitForFunction(()=>document.querySelector('button[aria-pressed]')?.disabled===false);
  await p.click('loc=role:button[name="10발"]');
  await p.waitForFunction(()=>document.body.textContent.includes('Gemini 원본 표적 영역'),undefined,{timeout:60000});
- const state=await p.evaluate(()=>({text:document.body.textContent,rows:document.querySelector('tbody')?.rows.length,virtual:document.querySelectorAll('[data-virtual-pin]').length,total:document.querySelector('[aria-label="선택 발수 추정 총점"]')?.dataset.estimateTotal,request:window.__testRequests[0]}));
+ const state=await p.evaluate(()=>({text:document.body.textContent,rows:document.querySelectorAll('tbody [data-detail-source="image"]').length,virtual:document.querySelectorAll('[data-virtual-pin]').length,total:document.querySelector('[aria-label="선택 발수 추정 총점"]')?.dataset.estimateTotal,request:window.__testRequests[0]}));
  assert(state.rows===6&&state.virtual===4,'Empty AI response preserves six native positions and four virtual pins');
  assert(Number(state.total)===83.0,'Same calibration and selected-count scoring preserve 83.0 estimate');
  assert(state.text.includes('다중 링 4개 적합')&&state.text.includes('원본 3000'),'Native ring fitting and source metadata preserved');
@@ -33,7 +33,7 @@ try{
  await p.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent?.trim()==='15발')?.scrollIntoView({block:'center'}));
  await p.click('loc=role:button[name="15발"]');
  await p.waitForFunction(()=>Number(document.querySelector('[aria-label="선택 발수 추정 총점"]')?.dataset.estimateTotal)===121.6,undefined,{timeout:60000});
- assert(await p.evaluate(()=>window.__testRequests.length===1&&document.querySelector('tbody')?.rows.length===6),'Changing selected count reuses AI analysis without another request or changed image positions');
+ assert(await p.evaluate(()=>window.__testRequests.length===1&&document.querySelectorAll('tbody [data-detail-source="image"]').length===6),'Changing selected count reuses AI analysis without another request or changed image positions');
  await fs.mkdir(root+'/outputs/gemini-comparison',{recursive:true});
  await fs.writeFile(root+'/outputs/gemini-comparison/integration-checks.json',JSON.stringify({kind:'Mock transport, not Gemini accuracy',checks,request:state.request},null,2));
  console.log({passed:checks.length,request:state.request});
