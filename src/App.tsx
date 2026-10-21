@@ -1,3 +1,4 @@
+import { calculateEstimatedImpactCenter } from './utils/estimatedImpactCenter';
 import { createVirtualPins, reviewsWithVirtualScores, VirtualPinEdit, virtualId, constrainVirtualPin } from './utils/virtualPins';
 import { proposeRegions, mergeRegionReviews } from './utils/regionProposals';
 import { completeScore } from './utils/scoreCompletion';
@@ -108,6 +109,7 @@ export const App: React.FC = () => {
   // 집탄 통계 계산 (목표 발수 동적 반영)
   const baseReviews = useMemo(() => mergeRegionReviews(proposeRegions(unresolvedRegions,shots,calibration,targetShotCount,countConditioned),scoreReviews),[unresolvedRegions,shots,calibration,targetShotCount,countConditioned,scoreReviews]);
   const virtualPins = useMemo(()=>createVirtualPins(unresolvedRegions,baseReviews,calibration,virtualPinEdits),[unresolvedRegions,baseReviews,calibration,virtualPinEdits]);
+  const estimatedCenter = useMemo(() => calculateEstimatedImpactCenter(shots, virtualPins, calibration, targetShotCount), [shots, virtualPins, calibration, targetShotCount]);
   const effectiveReviews = useMemo(()=>reviewsWithVirtualScores(baseReviews,virtualPins,calibration),[baseReviews,virtualPins,calibration]);
   const moveVirtualPin = (id:string,x:number,y:number) => {
     const pin=virtualPins.find(p=>p.id===id),region=unresolvedRegions.find(r=>r.id===pin?.regionId);
@@ -417,7 +419,7 @@ export const App: React.FC = () => {
               </div>
               <div className="grid min-w-0 items-start gap-5 lg:grid-cols-12">
                 <div className={`min-w-0 lg:col-span-7 lg:block ${mobileView === 'target' ? 'block' : 'hidden'}`}>
-                  <TargetCanvas virtualPins={virtualPins} onMoveVirtualPin={moveVirtualPin} onDeleteVirtualPin={deleteVirtualPin} unresolvedRegions={unresolvedRegions} imageUrl={imageUrl} calibration={calibration} onCalibrationChange={handleCalibrationChange} shots={shots} selectedShotId={selectedShotId} onShotsChange={(next) => { setShots(next); resetScoreReview(); }} onSelectShot={setSelectedShotId} mpi={{ x_mm: stats.mpiX_mm, y_mm: stats.mpiY_mm }} targetCount={targetShotCount} />
+                  <TargetCanvas virtualPins={virtualPins} onMoveVirtualPin={moveVirtualPin} onDeleteVirtualPin={deleteVirtualPin} unresolvedRegions={unresolvedRegions} imageUrl={imageUrl} calibration={calibration} onCalibrationChange={handleCalibrationChange} shots={shots} selectedShotId={selectedShotId} onShotsChange={(next) => { setShots(next); resetScoreReview(); }} onSelectShot={setSelectedShotId} mpi={estimatedCenter} targetCount={targetShotCount} />
                   <button onClick={() => goToWorkspace('results')} className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 text-sm font-bold text-white dark:bg-slate-800 lg:hidden">분석 결과 확인 <ArrowRight size={17} /></button>
                 </div>
                 <div className={`min-w-0 space-y-4 lg:col-span-5 lg:block ${mobileView === 'results' ? 'block' : 'hidden'}`}>

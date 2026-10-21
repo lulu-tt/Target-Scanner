@@ -1,3 +1,4 @@
+import { EstimatedImpactCenter, impactCenterLabel } from '../utils/estimatedImpactCenter';
 import { VirtualPin, constrainVirtualPin } from '../utils/virtualPins';
 import { UnresolvedRegion } from '../utils/overlapDetection';
 import { shotStatus, statusLabel, statusColor, summarizeEvidence } from '../utils/shotEvidence';
@@ -25,7 +26,7 @@ interface TargetCanvasProps {
   selectedShotId: string | null;
   onShotsChange: (shots: ShotPoint[]) => void;
   onSelectShot: (id: string | null) => void;
-  mpi: { x_mm: number; y_mm: number };
+  mpi: EstimatedImpactCenter | null;
   targetCount?: number;
 }
 
@@ -143,9 +144,9 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
     }
 
     // 3. MPI(탄착군 중심) 표시 (옵션)
-    if (showMpi && shots.length > 1) {
-      const mpiPxX = calibration.centerX + mpi.x_mm * calibration.pxPerMm;
-      const mpiPxY = calibration.centerY + mpi.y_mm * (calibration.pxPerMmY ?? calibration.pxPerMm);
+    if (showMpi && mpi) {
+      const mpiPxX = mpi.pixelX;
+      const mpiPxY = mpi.pixelY;
 
       ctx.save();
       ctx.strokeStyle = '#00E5FF';
@@ -167,7 +168,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
       // MPI 뱃지
       ctx.fillStyle = '#00E5FF';
       ctx.font = 'black 12px sans-serif';
-      ctx.fillText('MPI', mpiPxX + 12, mpiPxY - 10);
+      ctx.fillText('추정 MPI', mpiPxX + 12, mpiPxY - 10);
       ctx.restore();
     }
 
@@ -495,7 +496,7 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
         )}
 
       </div>
-      {virtualPins.length>0 && <details className="mt-3 w-full" open={isEditing}><summary className="flex min-h-11 cursor-pointer items-center text-xs font-bold text-purple-700 dark:text-purple-400">가상 추정 핀 {virtualPins.length}개 선택·수정</summary><p className="mb-2 text-xs leading-relaxed text-slate-500">반투명 보라색 점선은 겹침 영역 안의 예시 위치입니다. 실제 감지 위치가 아닙니다. 아래에서 선택한 뒤 끌거나 삭제하세요. 집탄 통계에서 제외됩니다.</p><div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto">{virtualPins.map((pin,i)=><button key={pin.id} data-virtual-pin={pin.id} data-x={pin.pixelX} data-y={pin.pixelY} aria-label={`가상 핀 V${i+1} 선택`} aria-pressed={pin.id===selectedShotId} onClick={()=>{onSelectShot(pin.id===selectedShotId?null:pin.id);setIsEditing(true);setShowShots(true);containerRef.current?.scrollIntoView({block:'center'});}} className={`min-h-11 rounded-xl border px-3 text-xs font-bold ${pin.id===selectedShotId?'border-purple-500 bg-purple-100 text-purple-900 dark:bg-purple-950 dark:text-purple-200':'border-purple-200 text-purple-700 dark:border-purple-800 dark:text-purple-400'}`}>V{i+1}{pin.moved?' · 수정':''}</button>)}</div></details>}
+      {virtualPins.length>0 && <details className="mt-3 w-full" open={isEditing}><summary className="flex min-h-11 cursor-pointer items-center text-xs font-bold text-purple-700 dark:text-purple-400">가상 추정 핀 {virtualPins.length}개 선택·수정</summary><p className="mb-2 text-xs leading-relaxed text-slate-500">반투명 보라색 점선은 겹침 영역 안의 예시 위치입니다. 실제 감지 위치가 아닙니다. 아래에서 선택한 뒤 끌거나 삭제하세요. 이미지 핀 집탄 통계에서는 제외되며, 전체 추정 탄착중심에는 포함됩니다.</p><div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto">{virtualPins.map((pin,i)=><button key={pin.id} data-virtual-pin={pin.id} data-x={pin.pixelX} data-y={pin.pixelY} aria-label={`가상 핀 V${i+1} 선택`} aria-pressed={pin.id===selectedShotId} onClick={()=>{onSelectShot(pin.id===selectedShotId?null:pin.id);setIsEditing(true);setShowShots(true);containerRef.current?.scrollIntoView({block:'center'});}} className={`min-h-11 rounded-xl border px-3 text-xs font-bold ${pin.id===selectedShotId?'border-purple-500 bg-purple-100 text-purple-900 dark:bg-purple-950 dark:text-purple-200':'border-purple-200 text-purple-700 dark:border-purple-800 dark:text-purple-400'}`}>V{i+1}{pin.moved?' · 수정':''}</button>)}</div></details>}
       <div className="mt-3 flex w-full flex-wrap items-center justify-between gap-2">
         <div className="flex items-center rounded-xl bg-slate-100 p-0.5 dark:bg-slate-800">
           <button onClick={() => setZoom(z => Math.max(z - .25, 1))} className="icon-button" aria-label="축소" disabled={zoom <= 1}><ZoomOut size={18} /></button>
@@ -504,9 +505,15 @@ export const TargetCanvas: React.FC<TargetCanvasProps> = ({
         </div>
         <button onClick={() => setShowDisplayOptions(!showDisplayOptions)} aria-expanded={showDisplayOptions} className="flex min-h-11 items-center gap-1.5 rounded-xl px-2 text-xs font-semibold text-slate-600 dark:text-slate-300"><Settings2 size={17} />표시 설정</button>
       </div>
+      {showMpi && mpi && <div aria-label="추정 탄착중심" data-center-x={mpi.pixelX} data-center-y={mpi.pixelY} data-center-count={mpi.count} data-center-complete={mpi.complete} className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-950 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-100">
+        <p className="font-bold">{impactCenterLabel(mpi)}</p>
+        <p className="mt-1">이미지 핀 {mpi.count - mpi.virtualCount}개 + 가상 핀 {mpi.virtualCount}개의 위치를 같은 비중으로 평균했습니다.</p>
+        <p className="mt-1">표적 중심 기준 X {mpi.x_mm.toFixed(2)}mm · Y {mpi.y_mm.toFixed(2)}mm (우측·아래쪽 +)</p>
+        <p className="mt-1">가상 위치에 따른 추정값입니다. {mpi.complete ? '가상 핀을 이동·삭제하면 중심도 바뀝니다.' : '선택 발수 전체의 중심으로 확정할 수 없습니다.'}</p>
+      </div>}
       {showDisplayOptions && calibration.targetType === 'standard' && <div className="mt-3 flex w-full flex-wrap items-center gap-2 text-xs"><span>세로 링 배율</span>{[-.05,.05].map(d=><button key={d} aria-label={d<0?'세로 링 줄이기':'세로 링 늘리기'} onClick={()=>onCalibrationChange?.({...calibration,pxPerMmY:Math.max(1,(calibration.pxPerMmY??calibration.pxPerMm)+d),method:'manual',verified:false})} className="min-h-11 rounded-xl border px-4">{d<0?'−':'+'}</button>)}</div>}
       {showDisplayOptions && <div className="mt-2 grid w-full grid-cols-2 gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-        {[{ label: '동심원', enabled: showRings, toggle: () => setShowRings(!showRings) }, { label: '탄착 핀', enabled: showShots, toggle: () => setShowShots(!showShots) }, { label: '점수 라벨', enabled: showScoreLabels, toggle: () => setShowScoreLabels(!showScoreLabels) }, { label: '탄착 중심', enabled: showMpi, toggle: () => setShowMpi(!showMpi) }].map(option => <button key={option.label} onClick={option.toggle} aria-pressed={option.enabled} className={`flex min-h-11 items-center justify-between rounded-xl border px-3 text-xs font-semibold ${option.enabled ? 'border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-800' : 'border-slate-200 text-slate-500 dark:border-slate-700'}`}>{option.label}<span>{option.enabled ? '켬' : '끔'}</span></button>)}
+        {[{ label: '동심원', enabled: showRings, toggle: () => setShowRings(!showRings) }, { label: '탄착 핀', enabled: showShots, toggle: () => setShowShots(!showShots) }, { label: '점수 라벨', enabled: showScoreLabels, toggle: () => setShowScoreLabels(!showScoreLabels) }, { label: '추정 탄착중심', enabled: showMpi, toggle: () => setShowMpi(!showMpi) }].map(option => <button key={option.label} onClick={option.toggle} aria-pressed={option.enabled} className={`flex min-h-11 items-center justify-between rounded-xl border px-3 text-xs font-semibold ${option.enabled ? 'border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-800' : 'border-slate-200 text-slate-500 dark:border-slate-700'}`}>{option.label}<span>{option.enabled ? '켬' : '끔'}</span></button>)}
         <button onClick={() => setIsCalibrating(!isCalibrating)} aria-expanded={isCalibrating} className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 text-xs font-semibold dark:bg-slate-800"><Sliders size={16} />표적 중심·크기 보정</button>
       </div>}
 

@@ -166,7 +166,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
             <h4 className="text-xs font-black text-cyan-900 dark:text-cyan-300 flex flex-wrap items-center gap-1.5">
               <span>영점 클릭 수정 가이드</span>
               <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-                (MPI: X {stats.mpiX_mm >= 0 ? `+${stats.mpiX_mm}` : stats.mpiX_mm}mm, Y {stats.mpiY_mm >= 0 ? `+${stats.mpiY_mm}` : stats.mpiY_mm}mm)
+                (이미지 핀 평균 · 가상 제외: X {stats.mpiX_mm >= 0 ? `+${stats.mpiX_mm}` : stats.mpiX_mm}mm, Y {stats.mpiY_mm >= 0 ? `+${stats.mpiY_mm}` : stats.mpiY_mm}mm)
               </span>
             </h4>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mt-2 text-xs font-bold text-slate-700 dark:text-slate-200">
