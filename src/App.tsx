@@ -1,13 +1,14 @@
+import { UnresolvedRegion } from './utils/overlapDetection';
 /**
  * [TargetScan AI 메인 애플리케이션 컴포넌트]
  * 작성자: 디자인 실장 영자 & 개발부장 코다리
  * 의도:
- *   1. [하이브리드 AI 비전 파이프라인]: Google Gemini 2.5 Flash(100% 정밀) + 온디바이스 v3.0(0초 즉시)
+ *   1. [하이브리드 AI 비전 파이프라인]: Google Gemini 및 온디바이스 분석
  *   2. [손글씨/메모 완전 무시]: 코치 메모, 볼펜 손글씨 완벽 배제
  *   3. [모바일 퍼스트 레이아웃]: 한 손 터치, 라이트/다크 테마, 실시간 집탄 분석
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { TargetCalibration, ShotPoint, SavedSession, TargetMode } from './types/target';
 import { SAMPLE_PRESETS, SamplePreset, generateSampleTargetImage } from './utils/targetSamples';
 import { processTargetImage, VisionProcessResult } from './utils/visionProcessor';
@@ -19,7 +20,7 @@ import { TargetCanvas } from './components/TargetCanvas';
 import { ScoreBoard } from './components/ScoreBoard';
 import { HistoryModal } from './components/HistoryModal';
 import { SettingsModal } from './components/SettingsModal';
-import { CheckCircle2, Loader2, Sparkles } from 'lucide-react';
+import { CheckCircle2, Loader2, ScanLine, BarChart3, History, BookmarkPlus, ArrowRight, Target } from 'lucide-react';
 
 export const App: React.FC = () => {
   // 테마 상태 (기본값: 라이트 모드)
@@ -32,6 +33,9 @@ export const App: React.FC = () => {
       return 'light';
     }
   });
+
+  const [mobileView, setMobileView] = useState<'target' | 'results'>('target');
+  const workspaceRef = useRef<HTMLDivElement>(null);
 
   // 사격 모드 (10발 / 15발 / 20발 / 30발 / 자유 / 백지)
   const [targetMode, setTargetMode] = useState<TargetMode>('10shots');
@@ -54,9 +58,10 @@ export const App: React.FC = () => {
     pxPerMm: 16.0,
   });
   const [shots, setShots] = useState<ShotPoint[]>([]);
+  const [unresolvedRegions, setUnresolvedRegions] = useState<UnresolvedRegion[]>([]);
   const [analysisWarnings, setAnalysisWarnings] = useState<string[]>([]);
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
-  const [activePresetId, setActivePresetId] = useState<string>(SAMPLE_PRESETS[0].id);
+  const [activePresetId, setActivePresetId] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('표적지 왜곡 보정 및 탄흔 감지 중...');
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
@@ -103,6 +108,7 @@ export const App: React.FC = () => {
     try {
       setIsLoading(true);
       setLoadingMessage('표준 샘플 표적지 생성 중...');
+      setMobileView('target');
       setCurrentFile(null);
       setActivePresetId(preset.id);
       setIsAwaitingModeSelection(false);
@@ -112,6 +118,7 @@ export const App: React.FC = () => {
       setImageUrl(result.normalizedImageUrl);
       setCalibration(result.calibration);
       setShots(result.detectedShots);
+      setUnresolvedRegions(result.unresolvedRegions ?? []);
       setAnalysisWarnings(result.warnings ?? []);
       setSelectedShotId(null);
       showToast(`'${preset.name}' 샘플이 로드되었습니다.`);
@@ -144,7 +151,7 @@ export const App: React.FC = () => {
               mode,
               targetCount: count,
             });
-            showToast(`Gemini AI: 탄착 후보 ${result.detectedShots.length}개 감지. 결과를 확인해주세요.`);
+            showToast(`Gemini AI: 감지·추정 위치 ${result.detectedShots.length}개. 결과를 확인해주세요.`);
           } catch (aiErr: any) {
             console.warn('Gemini AI 분석 실패, 온디바이스 v3.0 엔진으로 자동 폴백합니다:', aiErr);
             showToast('AI 분석 일시 지연: 온디바이스 v3.0 엔진으로 대체 분석합니다.');
@@ -160,12 +167,14 @@ export const App: React.FC = () => {
             mode,
             targetCount: count,
           });
-          showToast(`온디바이스: 탄착 후보 ${result.detectedShots.length}개 감지. 결과를 확인해주세요.`);
+          showToast(`온디바이스: 감지·추정 위치 ${result.detectedShots.length}개. 결과를 확인해주세요.`);
         }
 
+        setMobileView('target');
         setImageUrl(result.normalizedImageUrl);
         setCalibration(result.calibration);
         setShots(result.detectedShots);
+        setUnresolvedRegions(result.unresolvedRegions ?? []);
         setAnalysisWarnings(result.warnings ?? []);
         setSelectedShotId(null);
       } catch (err) {
@@ -180,7 +189,9 @@ export const App: React.FC = () => {
 
   // 파일 업로드 핸들러: [프로세스 개편] 사진 먼저 등록 -> 사격 목표 발수/유형 선택 순서
   const handleFileUpload = async (file: File) => {
+    setMobileView('target');
     setAnalysisWarnings([]);
+    setUnresolvedRegions([]);
     setCurrentFile(file);
     setActivePresetId('');
     setSelectedShotId(null);
@@ -248,22 +259,32 @@ export const App: React.FC = () => {
       stats: { ...stats },
       targetImage: imageUrl,
       analysisWarnings: [...analysisWarnings],
+      calibration: { ...calibration },
+      unresolvedRegions: [...unresolvedRegions],
     };
 
     const updated = [newSession, ...savedSessions];
-    setSavedSessions(updated);
     try {
       localStorage.setItem('targetscan_sessions', JSON.stringify(updated));
+      setSavedSessions(updated);
     } catch (e) {
-      console.warn('LocalStorage 저장 한도 초과:', e);
+      showToast('저장 공간이 부족합니다. 이전 기록을 정리한 후 다시 저장해주세요.');
+      return;
     }
     showToast('사격 세션이 기록 일지에 저장되었습니다!');
   };
 
   // 저장된 세션 복원
   const handleLoadSession = (session: SavedSession) => {
+    setCurrentFile(null);
+    setActivePresetId('');
+    setIsAwaitingModeSelection(false);
+    setTargetMode(session.mode ?? '10shots');
+    if (session.calibration) setCalibration(session.calibration);
+    setMobileView('target');
     if (session.targetImage) setImageUrl(session.targetImage);
     setShots(session.shots);
+    setUnresolvedRegions(session.unresolvedRegions ?? []);
     setAnalysisWarnings(session.analysisWarnings ?? ['이전 버전 기록은 임의 보충된 탄착점을 포함할 수 있습니다. 원본 사진으로 다시 분석해주세요.']);
     setSelectedShotId(null);
     showToast(`'${session.date}' 세션을 불러왔습니다.`);
@@ -272,9 +293,13 @@ export const App: React.FC = () => {
   // 세션 삭제
   const handleDeleteSession = (id: string) => {
     const updated = savedSessions.filter((s) => s.id !== id);
-    setSavedSessions(updated);
-    localStorage.setItem('targetscan_sessions', JSON.stringify(updated));
-    showToast('세션 기록이 삭제되었습니다.');
+    try {
+      localStorage.setItem('targetscan_sessions', JSON.stringify(updated));
+      setSavedSessions(updated);
+      showToast('세션 기록이 삭제되었습니다.');
+    } catch {
+      showToast('기록을 삭제하지 못했습니다. 브라우저 저장소 설정을 확인해주세요.');
+    }
   };
 
   // 과녁 중심(초점) 및 가상선 보정 핸들러 (중심/반경 변경 시 모든 샷 점수 실시간 재계산)
@@ -294,10 +319,16 @@ export const App: React.FC = () => {
     );
   };
 
-  // 초기 마운트 시 1번 프리셋 자동 로드
+  const goToWorkspace = (view: 'target' | 'results') => {
+    setMobileView(view);
+    requestAnimationFrame(() => workspaceRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' }));
+  };
+
   useEffect(() => {
-    handleSelectPreset(SAMPLE_PRESETS[0]);
-  }, []);
+    if (imageUrl && !isLoading && !isAwaitingModeSelection) {
+      workspaceRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
+  }, [imageUrl, isLoading, isAwaitingModeSelection]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0C1014] text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
@@ -305,7 +336,7 @@ export const App: React.FC = () => {
       <Header
         onSaveSession={handleSaveSession}
         onOpenHistory={() => setIsHistoryOpen(true)}
-        hasShots={shots.length > 0}
+        hasShots={shots.length > 0 && !isLoading && !isAwaitingModeSelection}
         historyCount={savedSessions.length}
         theme={theme}
         onToggleTheme={toggleTheme}
@@ -313,120 +344,45 @@ export const App: React.FC = () => {
         hasApiKey={!!geminiApiKey}
       />
 
-      {/* 메인 작업 영역 (모바일 최적화 패딩) */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col gap-5 pb-16">
-        {/* 업로드 패널 */}
-        <ScannerPanel
-          onFileUpload={handleFileUpload}
-          isLoading={isLoading}
-          targetMode={targetMode}
-          onModeChange={handleModeChange}
-          hasApiKey={!!geminiApiKey}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-          onTriggerAiAnalysis={handleTriggerAiAnalysis}
-          hasFileToAnalyze={!!currentFile}
-          isAwaitingModeSelection={isAwaitingModeSelection}
-        />
-
-        {/* 2단계 발수 선택 대기 안내 배너 */}
-        {isAwaitingModeSelection && !isLoading && (
-          <div className="bg-gradient-to-r from-red-500/10 via-amber-500/10 to-indigo-500/10 border-2 border-red-500 rounded-3xl p-4 flex flex-col md:flex-row items-center justify-between gap-3 shadow-lg shadow-red-500/10">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-red-600 text-white font-black flex items-center justify-center text-base shadow-md shadow-red-500/30 flex-shrink-0 animate-bounce">
-                2
+      <main className="app-main mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-4 pt-6 sm:px-6 sm:pt-8">
+        <div className="flex items-end justify-between gap-3">
+          <div><p className="mb-1 text-[11px] font-bold uppercase tracking-[.2em] text-red-600 dark:text-red-400">TARGET SCANNER</p><h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">한 장으로 확인하는<br className="sm:hidden" /> 오늘의 사격</h2><p className="mt-2 text-sm text-slate-500 dark:text-slate-400">사진을 등록하고, 탄착점을 직접 확인하세요.</p></div>
+          <span className="hidden rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 sm:block">10m AIR RIFLE</span>
+        </div>
+        <ScannerPanel onFileUpload={handleFileUpload} isLoading={isLoading} targetMode={targetMode} onModeChange={handleModeChange} hasApiKey={!!geminiApiKey} onOpenSettings={() => setIsSettingsOpen(true)} onTriggerAiAnalysis={handleTriggerAiAnalysis} hasFileToAnalyze={!!currentFile} isAwaitingModeSelection={isAwaitingModeSelection} />
+        <div ref={workspaceRef} className="analysis-workspace min-w-0">
+          {isLoading ? (
+            <div role="status" aria-live="polite" className="surface-card flex min-h-64 flex-col items-center justify-center gap-4 p-6 text-center"><Loader2 className="h-9 w-9 animate-spin text-red-600" /><p className="text-sm font-semibold">{loadingMessage}</p><p className="text-xs text-slate-500">분석이 끝나면 표적에서 후보 위치를 확인할 수 있습니다.</p></div>
+          ) : !imageUrl ? (
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-white/40 p-7 text-center dark:border-slate-700 dark:bg-slate-900/40"><div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800"><ScanLine size={24} /></div><h3 className="text-sm font-bold">첫 표적을 등록해보세요</h3><p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">사진 촬영부터 탄착점 보정, 기록 저장까지<br />이 화면에서 이어서 할 수 있어요.</p><button onClick={() => handleSelectPreset(SAMPLE_PRESETS[0])} className="mx-auto mt-3 flex min-h-11 items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">샘플로 둘러보기 <ArrowRight size={14} /></button></div>
+          ) : isAwaitingModeSelection ? (
+            <div className="surface-card overflow-hidden"><img src={imageUrl} alt="분석할 표적 사진 미리보기" className="max-h-72 w-full bg-slate-100 object-contain dark:bg-slate-800" /><div role="status" className="p-4"><p className="text-sm font-bold">사진이 준비됐어요</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">위에서 사격 유형을 선택하면 분석을 시작합니다.</p></div></div>
+          ) : (
+            <>
+              <div className="mb-3 flex items-center justify-between gap-3"><h2 className="flex items-center gap-2 text-base font-bold"><Target size={18} className="text-red-600" />{activePresetId ? '샘플 분석' : '표적 분석'}</h2><span className="text-xs text-slate-500 dark:text-slate-400">탄착점 {shots.length}개 · 수동 확인 필요</span></div>
+              <div role="group" aria-label="분석 화면 선택" className="mb-4 grid grid-cols-2 gap-1 rounded-2xl bg-slate-200/60 p-1 dark:bg-slate-800 lg:hidden">
+                <button aria-pressed={mobileView === 'target'} onClick={() => setMobileView('target')} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold ${mobileView === 'target' ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}><ScanLine size={17} />표적 보정</button>
+                <button aria-pressed={mobileView === 'results'} onClick={() => setMobileView('results')} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold ${mobileView === 'results' ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}><BarChart3 size={17} />분석 결과</button>
               </div>
-              <div>
-                <p className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                  <span>사격 목표 발수 / 유형을 선택하세요</span>
-                  <span className="text-xs bg-red-600 text-white px-2 py-0.5 rounded-full font-bold">선택 즉시 정밀 분석</span>
-                </p>
-                <p className="text-xs text-slate-600 dark:text-slate-400">
-                  📸 표적지 사진 등록 완료! 이 표적지에 몇 발을 사격하셨나요?
-                </p>
+              <div className="grid min-w-0 items-start gap-5 lg:grid-cols-12">
+                <div className={`min-w-0 lg:col-span-7 lg:block ${mobileView === 'target' ? 'block' : 'hidden'}`}>
+                  <TargetCanvas unresolvedRegions={unresolvedRegions} imageUrl={imageUrl} calibration={calibration} onCalibrationChange={handleCalibrationChange} shots={shots} selectedShotId={selectedShotId} onShotsChange={setShots} onSelectShot={setSelectedShotId} mpi={{ x_mm: stats.mpiX_mm, y_mm: stats.mpiY_mm }} targetCount={targetShotCount} />
+                  <button onClick={() => goToWorkspace('results')} className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 text-sm font-bold text-white dark:bg-slate-800 lg:hidden">분석 결과 확인 <ArrowRight size={17} /></button>
+                </div>
+                <div className={`min-w-0 lg:col-span-5 lg:block ${mobileView === 'results' ? 'block' : 'hidden'}`}>
+                  <ScoreBoard unresolvedRegions={unresolvedRegions} shots={shots} stats={stats} targetCount={targetShotCount} analysisWarnings={analysisWarnings} selectedShotId={selectedShotId} onSelectShot={(id) => { setSelectedShotId(id); if (id) goToWorkspace('target'); }} />
+                </div>
               </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
-              <button
-                type="button"
-                onClick={() => handleModeChange('10shots')}
-                className="flex-1 md:flex-none px-3.5 py-2.5 bg-white dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black shadow-sm active:scale-95 transition text-slate-800 dark:text-slate-100"
-              >
-                🎯 10발
-              </button>
-              <button
-                type="button"
-                onClick={() => handleModeChange('15shots')}
-                className="flex-1 md:flex-none px-3.5 py-2.5 bg-white dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black shadow-sm active:scale-95 transition text-slate-800 dark:text-slate-100"
-              >
-                🔥 15발
-              </button>
-              <button
-                type="button"
-                onClick={() => handleModeChange('20shots')}
-                className="flex-1 md:flex-none px-3.5 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black shadow-md shadow-red-500/25 active:scale-95 transition"
-              >
-                ⚡ 20발 (추천)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleModeChange('30shots')}
-                className="flex-1 md:flex-none px-3.5 py-2.5 bg-white dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black shadow-sm active:scale-95 transition text-slate-800 dark:text-slate-100"
-              >
-                🏆 30발
-              </button>
-              <button
-                type="button"
-                onClick={() => handleModeChange('blank')}
-                className="flex-1 md:flex-none px-3.5 py-2.5 bg-slate-900 dark:bg-slate-700 text-white rounded-xl text-xs font-black shadow-sm active:scale-95 transition"
-              >
-                📄 백지 사격
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* 로딩 인디케이터 */}
-        {isLoading ? (
-          <div className="flex-1 flex flex-col items-center justify-center py-24 text-slate-500 dark:text-slate-400 gap-3">
-            <div className="relative flex items-center justify-center">
-              <Loader2 className="w-10 h-10 text-indigo-500 animate-spin stroke-[2.5]" />
-              <Sparkles className="w-4 h-4 text-amber-400 absolute animate-pulse" />
-            </div>
-            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-              {loadingMessage}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-            {/* 좌측: 인터랙티브 표적 캔버스 (7열) */}
-            <div className="lg:col-span-7 flex flex-col items-center w-full">
-              <TargetCanvas
-                imageUrl={imageUrl}
-                calibration={calibration}
-                onCalibrationChange={handleCalibrationChange}
-                shots={shots}
-                selectedShotId={selectedShotId}
-                onShotsChange={setShots}
-                onSelectShot={setSelectedShotId}
-                mpi={{ x_mm: stats.mpiX_mm, y_mm: stats.mpiY_mm }}
-                targetCount={targetShotCount}
-              />
-            </div>
-
-            {/* 우측: 실시간 스코어보드 & 통계 분석 (5열) */}
-            <div className="lg:col-span-5 flex flex-col w-full">
-              <ScoreBoard
-                shots={shots}
-                stats={stats}
-                targetCount={targetShotCount}
-                analysisWarnings={analysisWarnings}
-                selectedShotId={selectedShotId}
-                onSelectShot={setSelectedShotId}
-              />
-            </div>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </main>
+      <nav aria-label="주요 작업" className="mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-slate-200 bg-white/95 px-2 pt-2 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/95 lg:hidden">
+        <button onClick={() => { setMobileView('target'); window.scrollTo({ top: 0, behavior: 'auto' }); }} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold text-slate-500 dark:text-slate-400"><ScanLine size={20} />스캔</button>
+        <button disabled={!imageUrl || isLoading || isAwaitingModeSelection} onClick={() => goToWorkspace('results')} className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold disabled:opacity-30 ${mobileView === 'results' ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}><BarChart3 size={20} />결과</button>
+        <button onClick={() => setIsHistoryOpen(true)} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold text-slate-500 dark:text-slate-400"><History size={20} />기록 {savedSessions.length > 0 ? savedSessions.length : ''}</button>
+        <button disabled={shots.length === 0 || isLoading || isAwaitingModeSelection} onClick={handleSaveSession} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl bg-red-600 text-[11px] font-bold text-white disabled:bg-slate-100 disabled:text-slate-400 dark:disabled:bg-slate-800"><BookmarkPlus size={20} />기록 저장</button>
+      </nav>
 
       {/* 히스토리 모달 */}
       <HistoryModal
@@ -453,7 +409,7 @@ export const App: React.FC = () => {
 
       {/* 토스트 알림 */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900/95 dark:bg-white/95 text-white dark:text-slate-900 px-4 py-3 rounded-2xl shadow-2xl text-xs font-black flex items-center gap-2 backdrop-blur-md animate-bounce">
+        <div role="status" className="app-toast fixed left-4 right-4 z-[80] sm:left-auto sm:max-w-md bg-slate-900/95 dark:bg-white/95 text-white dark:text-slate-900 px-4 py-3 rounded-2xl shadow-2xl text-xs font-black flex items-center gap-2 backdrop-blur-md">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 dark:text-emerald-600 flex-shrink-0" />
           <span>{toast}</span>
         </div>

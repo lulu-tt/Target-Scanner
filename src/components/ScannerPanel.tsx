@@ -1,244 +1,61 @@
-/**
- * [영자 실장의 모바일 퍼스트 스캐너 패널]
- * 작성자: 디자인 실장 영자 & 코다리 부장
- * 의도: 두꺼운 사격 장갑이나 야외 조명에서도 한 손으로 시원하게 터치할 수 있는
- *       빅 터치 타겟(56px)과 수평 스와이프 프리셋 칩 구성
- */
-
 import React, { useRef } from 'react';
 import { TargetMode } from '../types/target';
-import { Camera, Image as ImageIcon, Sparkles, RefreshCw, Key } from 'lucide-react';
+import { Camera, Image as ImageIcon, ArrowUpRight, Check, RefreshCw } from 'lucide-react';
 
 interface ScannerPanelProps {
   onFileUpload: (file: File) => void;
   isLoading: boolean;
   targetMode: TargetMode;
   onModeChange: (mode: TargetMode) => void;
-  onSelectPreset?: (preset: any) => void;
-  activePresetId?: string;
   hasApiKey: boolean;
   onOpenSettings: () => void;
   onTriggerAiAnalysis?: () => void;
   hasFileToAnalyze: boolean;
   isAwaitingModeSelection?: boolean;
 }
+const modes: { value: TargetMode; label: string }[] = [
+  { value: '10shots', label: '10발' }, { value: '15shots', label: '15발' },
+  { value: '20shots', label: '20발' }, { value: '30shots', label: '30발' },
+  { value: 'blank', label: '백지 표적' }, { value: 'free', label: '자유 발수' },
+];
 
-export const ScannerPanel: React.FC<ScannerPanelProps> = ({
-  onFileUpload,
-  isLoading,
-  targetMode,
-  onModeChange,
-  hasApiKey,
-  onOpenSettings,
-  onTriggerAiAnalysis,
-  hasFileToAnalyze,
-  isAwaitingModeSelection = false,
-}) => {
+export const ScannerPanel: React.FC<ScannerPanelProps> = ({ onFileUpload, isLoading, targetMode, onModeChange, hasApiKey, onOpenSettings, onTriggerAiAnalysis, hasFileToAnalyze, isAwaitingModeSelection = false }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      onFileUpload(file);
-    }
+    if (file) onFileUpload(file);
+    e.target.value = ''; // 같은 사진도 다시 선택할 수 있도록 초기화
   };
-
   return (
-    <div className="bg-white dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-4 md:p-5 flex flex-col gap-4 shadow-xl shadow-slate-200/40 dark:shadow-none transition-colors">
-      {/* 1. [STEP 1] 표적지 사진 촬영 / 불러오기 */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between text-xs px-1">
-          <span className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-            <span className="w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-[11px] font-black">1</span>
-            <span>표적지 사진 등록 (먼저 사진을 올려주세요)</span>
-          </span>
-          {hasFileToAnalyze ? (
-            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
-              ✓ 사진 등록 완료
-            </span>
-          ) : (
-            <span className="text-[11px] text-slate-400 font-medium">카메라 촬영 또는 앨범 선택</span>
-          )}
+    <section aria-label="표적 사진 분석" className="surface-card overflow-hidden">
+      <div className="p-4 sm:p-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5"><span className="step-number">1</span><h2 className="text-sm font-bold">표적 사진 등록</h2></div>
+          {hasFileToAnalyze && <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400"><Check size={14} />등록 완료</span>}
         </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-
-          {/* 1) 실시간 카메라 촬영 버튼 (메인 강조) */}
-          <button
-            onClick={() => cameraInputRef.current?.click()}
-            disabled={isLoading}
-            className="h-14 md:h-16 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 active:scale-[0.98] text-white rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2.5 shadow-lg shadow-red-500/25 transition-all disabled:opacity-50"
-          >
-            <Camera className="w-5 h-5 stroke-[2.5]" />
-            <span>표적 카메라 촬영</span>
-          </button>
-
-          {/* 2) 앨범에서 사진 선택 버튼 */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading}
-            className="h-14 md:h-16 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-[0.98] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-sm md:text-base flex items-center justify-center gap-2.5 transition-all disabled:opacity-50"
-          >
-            <ImageIcon className="w-5 h-5 text-slate-500 dark:text-slate-400 stroke-[2.2]" />
-            <span>사진 불러오기</span>
-          </button>
+        <input ref={cameraInputRef} aria-label="카메라 사진 선택" type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
+        <input ref={fileInputRef} aria-label="앨범 사진 선택" type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+        <div className="grid grid-cols-[1.15fr_1fr] gap-2.5">
+          <button disabled={isLoading} onClick={() => cameraInputRef.current?.click()} className="flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-red-600 px-3 text-sm font-bold text-white shadow-sm shadow-red-600/20 transition active:scale-[.98] hover:bg-red-700 disabled:opacity-40"><Camera size={21} />{hasFileToAnalyze ? '다시 촬영' : '표적 촬영'}</button>
+          <button disabled={isLoading} onClick={() => fileInputRef.current?.click()} className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold transition active:scale-[.98] dark:border-slate-700 dark:bg-slate-800"><ImageIcon size={20} />사진 선택</button>
+        </div>
+        {!hasFileToAnalyze && <p className="mt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">표적 전체가 보이도록 정면에서 촬영해주세요.</p>}
+      </div>
+      <div className={`border-t p-4 sm:px-6 ${isAwaitingModeSelection ? 'border-red-200 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20' : 'border-slate-100 dark:border-slate-800'}`}>
+        <div className="mb-3 flex items-center gap-2.5"><span className={`step-number ${!hasFileToAnalyze ? 'opacity-40' : ''}`}>2</span><h2 className="text-sm font-bold">사격 유형 선택</h2><span className="ml-auto text-xs text-slate-500 dark:text-slate-400">{!hasFileToAnalyze ? '사진을 먼저 등록해주세요' : isAwaitingModeSelection ? '선택하면 분석 시작' : '선택한 발수는 참고용'}</span></div>
+        <div className="grid grid-cols-4 gap-2" role="group" aria-label="사격 발수">
+          {modes.slice(0, 4).map(mode => <button key={mode.value} disabled={isLoading || !hasFileToAnalyze} aria-pressed={hasFileToAnalyze && targetMode === mode.value && !isAwaitingModeSelection} onClick={() => onModeChange(mode.value)} className={`mode-button ${hasFileToAnalyze && targetMode === mode.value && !isAwaitingModeSelection ? 'mode-selected' : ''}`}>{mode.label}</button>)}
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2" role="group" aria-label="추가 사격 유형">
+          {modes.slice(4).map(mode => <button key={mode.value} disabled={isLoading || !hasFileToAnalyze} aria-pressed={hasFileToAnalyze && targetMode === mode.value && !isAwaitingModeSelection} onClick={() => onModeChange(mode.value)} className={`mode-button ${hasFileToAnalyze && targetMode === mode.value && !isAwaitingModeSelection ? 'mode-selected' : ''}`}>{mode.label}<span className="ml-2 text-[11px] font-normal opacity-70">{mode.value === 'blank' ? '집탄 확인' : '개수 제한 없이'}</span></button>)}
         </div>
       </div>
-
-      {/* 2. AI 정밀 분석 엔진 상태 바 & 실행 버튼 */}
-      <div className="flex items-center justify-between p-2.5 px-3 rounded-2xl bg-gradient-to-r from-indigo-50/80 via-purple-50/60 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/30 dark:to-slate-900 border border-indigo-100/80 dark:border-indigo-900/40">
-        <div className="flex items-center gap-2">
-          <div className={`w-2.5 h-2.5 rounded-full ${hasApiKey ? 'bg-indigo-500 shadow-sm shadow-indigo-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`} />
-          <div className="flex flex-col">
-            <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-              {hasApiKey ? 'Gemini AI 비전 엔진' : '온디바이스 기본 엔진 v3.0'}
-            </span>
-            <span className="text-[10px] text-slate-500 dark:text-slate-400">
-              {hasApiKey ? '이미지 기반 탄착 후보 감지 · 수동 확인 필요' : '겹친 구멍은 후보 1개로 표시 · 발수 자동 보충 없음'}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          {hasFileToAnalyze && onTriggerAiAnalysis && (
-            <button
-              type="button"
-              onClick={onTriggerAiAnalysis}
-              disabled={isLoading}
-              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-black flex items-center gap-1 shadow-md shadow-indigo-500/20 transition-all disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>AI 재분석</span>
-            </button>
-          )}
-
-          {!hasApiKey && (
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-bold flex items-center gap-1 transition-all"
-            >
-              <Key className="w-3 h-3" />
-              <span>AI 키 등록</span>
-            </button>
-          )}
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-1 border-t border-slate-100 bg-slate-50/70 px-4 py-1.5 text-xs dark:border-slate-800 dark:bg-slate-950/40 sm:px-6">
+        <button onClick={onOpenSettings} className="flex min-h-11 items-center gap-2 font-medium text-slate-600 dark:text-slate-400"><span className={`h-1.5 w-1.5 rounded-full ${hasApiKey ? 'bg-emerald-500' : 'bg-slate-400'}`} />{hasApiKey ? 'Gemini AI 분석' : '기기에서 분석'}<ArrowUpRight size={13} /></button>
+        {hasApiKey && hasFileToAnalyze && onTriggerAiAnalysis && <button onClick={onTriggerAiAnalysis} disabled={isLoading} className="flex min-h-11 items-center gap-1.5 font-semibold text-red-600 disabled:opacity-40"><RefreshCw size={14} />AI 재분석</button>}
+        {!hasApiKey && <span className="text-slate-500 dark:text-slate-400">API 키 없이 시작할 수 있어요</span>}
       </div>
-
-      {/* 3. [STEP 2] 사격 목표 발수 / 유형 선택 (사진 등록 후 선택 시 즉시 분석) */}
-      <div className={`flex flex-col gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 rounded-2xl p-2 transition-all ${
-        isAwaitingModeSelection
-          ? 'bg-red-500/10 border-2 border-red-500 shadow-lg shadow-red-500/20'
-          : ''
-      }`}>
-        <div className="flex items-center justify-between text-xs px-1">
-          <span className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-black ${
-              isAwaitingModeSelection ? 'bg-red-600 text-white animate-bounce' : 'bg-slate-700 text-white'
-            }`}>2</span>
-            <span>사격 목표 발수 / 유형 선택</span>
-          </span>
-          <span className={`text-[11px] ${
-            isAwaitingModeSelection ? 'text-red-600 dark:text-red-400 font-extrabold animate-pulse' : 'text-slate-400 font-medium'
-          }`}>
-            {isAwaitingModeSelection
-              ? '👉 발수를 터치하시면 즉시 정밀 분석됩니다!'
-              : hasFileToAnalyze
-              ? '터치 시 해당 발수로 즉시 재분석'
-              : '사진 등록 후 발수 선택 시 분석 실행'}
-          </span>
-        </div>
-        {/* 메인 정규 발수: 10발, 15발, 20발, 30발 */}
-        <div className="grid grid-cols-4 gap-1.5 bg-slate-100 dark:bg-slate-800/90 p-1 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
-          <button
-            type="button"
-            onClick={() => onModeChange('10shots')}
-            className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
-              targetMode === '10shots'
-                ? 'bg-red-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            🎯 10발
-          </button>
-          <button
-            type="button"
-            onClick={() => onModeChange('15shots')}
-            className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
-              targetMode === '15shots'
-                ? 'bg-red-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            🔥 15발
-          </button>
-          <button
-            type="button"
-            onClick={() => onModeChange('20shots')}
-            className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
-              targetMode === '20shots'
-                ? 'bg-red-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            ⚡ 20발
-          </button>
-          <button
-            type="button"
-            onClick={() => onModeChange('30shots')}
-            className={`py-2 px-1 rounded-xl text-xs font-black transition-all text-center ${
-              targetMode === '30shots'
-                ? 'bg-red-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            🏆 30발
-          </button>
-        </div>
-
-        {/* 보조 모드: 백지 사격 / 자유 발수 */}
-        <div className="grid grid-cols-2 gap-1.5 pt-0.5">
-          <button
-            type="button"
-            onClick={() => onModeChange('blank')}
-            className={`py-2 px-2 rounded-xl text-xs font-bold transition-all text-center border ${
-              targetMode === 'blank'
-                ? 'bg-slate-900 text-white dark:bg-red-500 dark:border-red-400 shadow-sm'
-                : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100'
-            }`}
-          >
-            📄 백지 사격 (집탄 전용)
-          </button>
-          <button
-            type="button"
-            onClick={() => onModeChange('free')}
-            className={`py-2 px-2 rounded-xl text-xs font-bold transition-all text-center border ${
-              targetMode === 'free'
-                ? 'bg-slate-900 text-white dark:bg-red-500 dark:border-red-400 shadow-sm'
-                : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100'
-            }`}
-          >
-            ♾️ 자유 발수 (무제한)
-          </button>
-        </div>
-      </div>
-    </div>
+    </section>
   );
 };

@@ -13,6 +13,8 @@ export interface ShotPoint {
   offsetY_mm: number;      // 표적 중심 기준 Y 편차 (+: 하, -: 상)
   distance_mm: number;     // 중심으로부터의 절대 거리 (mm)
   score: number;           // ISSF 소수점 점수 (0.0 ~ 10.9)
+  detectionStatus?: 'detected' | 'estimated' | 'manual' | 'legacy';
+  evidence?: { componentId: string; visibleArcDeg: number; residualPx: number };
   isManuallyAdjusted?: boolean;
 }
 
@@ -23,6 +25,7 @@ export interface TargetCalibration {
   centerY: number;         // 표적지 내 흑점 또는 탄착 중심 Y 픽셀
   blackRadiusPx: number;   // 흑점 픽셀 반경 (백지일 경우 기준 반경)
   pxPerMm: number;         // 1mm당 픽셀 수
+  holeRadiusPx?: number; // 이미지에서 얻은 탄흔 표시 반경 (mm 보정값과 구분)
   targetType?: 'standard' | 'blank'; // 정규 표적지 vs 백지 표적지
 }
 
@@ -43,6 +46,8 @@ export interface SavedSession {
   mode?: TargetMode;
   shots: ShotPoint[];
   stats: GroupingStats;
+  unresolvedRegions?: import('../utils/overlapDetection').UnresolvedRegion[];
+  calibration?: TargetCalibration;
   analysisWarnings?: string[]; // 자동 분석의 불확실성 안내도 기록과 함께 보존
   targetImage?: string;     // 썸네일 이미지 dataUrl
   note?: string;

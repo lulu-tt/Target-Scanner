@@ -304,6 +304,7 @@ CRITICAL INSTRUCTIONS:
     return {
       id: `ai-shot-${Date.now()}-${idx + 1}`,
       shotNumber: idx + 1,
+      detectionStatus: 'estimated',
       pixelX: pos.pixelX,
       pixelY: pos.pixelY,
       offsetX_mm: scoreResult.offsetX_mm,

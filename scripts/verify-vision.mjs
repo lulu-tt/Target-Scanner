@@ -4,7 +4,7 @@ const fs = await import('node:fs/promises');
 const path = await import('node:path');
 const { fileURLToPath } = await import('node:url');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const task = await taskSpace('Target Scanner accuracy 20261021');
+const task = await taskSpace(globalThis.targetScannerTaskSpace ?? 'Target Scanner accuracy 20261021');
 const page = task.page('p1');
 await page.goto('http://127.0.0.1:5173');
 const files = (await fs.readdir(root)).filter(name => /^KakaoTalk_Photo_.*\.jpeg$/.test(name)).sort();
@@ -41,7 +41,7 @@ const result = await page.evaluate(async ({ files }) => {
   }
   for (const [positions, expected, name] of [
     [[[380, 400], [418, 400]], 2, 'Nearby holes separated by paper remain separate'],
-    [[[390, 400], [410, 400]], 1, 'Overlapping cavity stays one candidate'],
+    [[[390, 400], [410, 400]], 0, 'Merged cavity without a radius reference remains unresolved'],
   ]) {
     const r = await processTargetImage(makeImage(positions), undefined, { targetCount: 20 });
     assert(r.detectedShots.length === expected, name);
@@ -67,7 +67,7 @@ const result = await page.evaluate(async ({ files }) => {
     responseShots = [{ x: 500, y: 500 }, { x: 510, y: 520 }];
     for (const count of [0, 1, 20]) {
       r = await analyzeTargetWithGemini(emptyUrl, 'test-only-not-a-key', { targetCount: count });
-      assert(r.detectedShots.length === 2, `Gemini candidates unchanged by count ${count}`);
+      assert(r.detectedShots.length === 2 && r.detectedShots.every(s => s.detectionStatus === 'estimated'), `Gemini estimates unchanged by count ${count}`);
     }
     responseShots = [null, {}, { x: '500', y: 500 }, { x: -1, y: 500 }, { x: 1001, y: 500 }, { x: 500 }, { x: 500, y: 500 }, { x: 500, y: 500 }, { x: 1, y: 1 }];
     r = await analyzeTargetWithGemini(emptyUrl, 'test-only-not-a-key', { targetCount: 20 });
@@ -90,5 +90,5 @@ for (const [i, name] of files.entries()) {
   result.photos.push(photo);
 }
 await fs.mkdir(path.join(root, 'outputs/accuracy'), { recursive: true });
-await fs.writeFile(path.join(root, 'outputs/accuracy/after.json'), JSON.stringify(result, null, 2));
+await fs.writeFile(path.join(root, 'outputs/overlap/regression.json'), JSON.stringify(result, null, 2));
 console.log({ passed: result.checks.length, photos: result.photos.map(r => ({ file: r.name, candidates: r.shots.length, type: r.calibration.targetType })) });

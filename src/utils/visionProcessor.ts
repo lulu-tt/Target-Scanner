@@ -1,12 +1,13 @@
+import { splitHoleComponents, UnresolvedRegion } from './overlapDetection';
 /**
  * [브라우저 온디바이스 컴퓨터 비전 프로세서 v3.0 - AI 고도화 에디션]
  * 작성자: 코다리 개발부장 & 디자인 실장 영자
  * 의도:
- *   1. [형태학적 5x5 오프닝]: 1~2px 굵기의 볼펜 손글씨/코치 피드백 메모 100% 원천 차단
+ *   1. [형태학적 5x5 오프닝]: 1~2px 굵기의 볼펜 손글씨/코치 피드백 메모 억제
  *   2. [외곽 테이블 플러드필]: 표적지 밖 파란색 매트/바닥 노이즈 격리 제거
  *   3. [백지 표적지 스마트 자동 추적]: 흑점 없는 백지 표적지의 경우 실제 탄착군(클러스터) 중심 자동 피팅
  *   4. [28mm 사격 ROI 제한]: 상하단 메모(날짜, 평가 문구) 완전 배제 및 순수 탄환 구멍만 캡처
- *   5. 연결된 구멍 후보만 반환하고 미검출 탄착점은 생성하지 않습니다.
+ *   5. 독립 구멍은 감지, 경계 원호로 분리한 중심은 추정으로 반환합니다.
  */
 
 import { TargetCalibration, ShotPoint, TargetMode } from '../types/target';
@@ -17,6 +18,8 @@ export interface VisionProcessResult {
   detectedShots: ShotPoint[];
   normalizedImageUrl: string;
   warnings?: string[];
+  unresolvedRegions?: UnresolvedRegion[];
+  holeRadiusPx?: number | null;
 }
 
 export interface VisionProcessOptions {
@@ -168,6 +171,8 @@ export async function processTargetImage(
   };
 
   const detectedShots: ShotPoint[] = [];
+  let unresolvedRegions: UnresolvedRegion[] = [];
+  let holeRadiusPx: number | null = null;
 
   // 프리셋 지정 좌표가 있는 경우
   if (knownShots && knownShots.length > 0) {
@@ -185,6 +190,7 @@ export async function processTargetImage(
         offsetY_mm: scoreData.offsetY_mm,
         distance_mm: scoreData.distanceMm,
         score: scoreData.score,
+        detectionStatus: 'detected',
         isManuallyAdjusted: false,
       });
     });
@@ -247,7 +253,7 @@ export async function processTargetImage(
       }
     }
 
-    // 3단계: [형태학적 5x5 오프닝] 볼펜 손글씨(두께 1~2px) 100% 필터링
+    // 3단계: [형태학적 5x5 오프닝] 볼펜 손글씨(두께 1~2px) 필터링
     // 4.5mm 탄환 구멍(직경 25~35px)은 내부 코어 면적이 넓어 5x5 전방위 픽셀이 꽉 차지만,
     // 볼펜 잉크 획은 1~2px 선이므로 5x5 윈도우에서 즉시 탈락됩니다.
     const isSolid = new Uint8Array(size * size);
@@ -347,7 +353,7 @@ export async function processTargetImage(
 
     // [엄격한 물리적 유효 사격 구역(ROI) 필터링 - 표준/백지 공통 적용]
     // ISSF 10m 공기소총: 1점 링 외곽 직경 45.5mm (반경 22.75mm)
-    // 외곽의 연도("2011년"), 날짜("10/18"), 우상단 점수표, 하단 코치 메모는 중심으로부터 반경 35mm~70mm 이상 떨어져 있으므로 100% 원천 배제
+    // 외곽의 연도("2011년"), 날짜("10/18"), 우상단 점수표, 하단 코치 메모는 중심으로부터 반경 35mm~70mm 이상 떨어져 있으므로 제외
     const maxRoiPx = targetType === 'standard'
       ? blackRadiusPx * 1.68 // 흑점(4점 링) 반경의 1.68배 = 약 25.6mm (1점 링 + 탄환 반경 여유)
       : 26.0 * pxPerMm;
@@ -358,12 +364,11 @@ export async function processTargetImage(
       return Math.hypot(avgX - centerX, avgY - centerY) <= maxRoiPx;
     });
 
-    // 연결된 구멍마다 후보 1개만 반환합니다. 겹친 탄흔의 개수나 중심을
-    // 목표 발수로부터 역산하지 않으며, 검출 영역이 없으면 빈 배열을 유지합니다.
-    const candidateShots = validComponents.map((pts) => ({
-      x: Math.round(pts.reduce((sum, p) => sum + p.x, 0) / pts.length),
-      y: Math.round(pts.reduce((sum, p) => sum + p.y, 0) / pts.length),
-    }));
+    const separated = splitHoleComponents(validComponents, targetType === 'standard' ? ISSF_AIR_RIFLE.PELLET_RADIUS_MM * pxPerMm : undefined);
+    unresolvedRegions = separated.regions;
+    holeRadiusPx = separated.radiusPx;
+    calibration.holeRadiusPx = separated.radiusPx ?? undefined;
+    const candidateShots = separated.fits;
 
     candidateShots.forEach((pos, idx) => {
       const scoreData = calculateShotScore(pos.x, pos.y, calibration);
@@ -376,6 +381,8 @@ export async function processTargetImage(
         offsetY_mm: scoreData.offsetY_mm,
         distance_mm: scoreData.distanceMm,
         score: scoreData.score,
+        detectionStatus: pos.status,
+        evidence: { componentId: pos.componentId, visibleArcDeg: pos.visibleArcDeg, residualPx: pos.residualPx },
         isManuallyAdjusted: false,
       });
     });
@@ -384,9 +391,11 @@ export async function processTargetImage(
   return {
     calibration,
     detectedShots,
+    unresolvedRegions,
+    holeRadiusPx,
     normalizedImageUrl: canvas.toDataURL('image/jpeg', 0.95),
     warnings: knownShots?.length ? [] : [
-      '자동 감지는 연결된 구멍마다 후보 1개를 표시합니다. 겹친 구멍의 발수와 개별 위치는 확정할 수 없어 수동 확인이 필요합니다.',
+      '감지는 독립된 원형 구멍, 추정은 겹친 경계의 원호로 찾은 중심입니다. 추정은 실제 탄착 위치를 보장하지 않습니다. 미확정에는 위치를 만들거나 점수를 부여하지 않습니다.',
       ...(targetType === 'blank' ? ['백지 표적은 실제 길이 기준을 알 수 없어 mm와 점수에 임시 배율을 사용합니다.'] : []),
     ],
   };
