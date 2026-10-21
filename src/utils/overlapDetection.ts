@@ -87,6 +87,7 @@ export function splitHoleComponents(components: HolePixel[][], physicalRadiusPx?
     const candidates = [...votes.values()].sort((a,b) => b.votes-a.votes).slice(0,160);
     const explained = new Set<number>();
     const accepted: HoleFit[] = [];
+    const refined: HoleFit[] = [];
     const tolerance = Math.max(2.1, radius * .16);
     for (;;) {
       let best: { fit: HoleFit; indices: number[]; merit: number } | undefined;
@@ -116,10 +117,35 @@ export function splitHoleComponents(components: HolePixel[][], physicalRadiusPx?
         if (!best || merit > best.merit) best = { fit: { x:candidate.x, y:candidate.y, status:'estimated', componentId, visibleArcDeg:bins.size*10, residualPx:residual/indices.length }, indices, merit };
       }
       if (!best) break;
+      // Remove the 2px voting-grid quantization using only the accepted visible arc.
+      // Keep the measured reference radius fixed; no desired score/count enters this fit.
+      const origin = { x: best.fit.x, y: best.fit.y };
+      let cx = origin.x, cy = origin.y;
+      for (let iteration = 0; iteration < 8; iteration++) {
+        let xx=0,xy=0,yy=0,bx=0,by=0;
+        for (const index of best.indices) {
+          const p=boundary[index], dx=cx-p.x,dy=cy-p.y,d=Math.hypot(dx,dy);
+          if(d<1e-6)continue;
+          const error=d-radius,weight=Math.min(1,tolerance/Math.max(Math.abs(error),1e-6)),gx=dx/d,gy=dy/d;
+          xx+=weight*gx*gx;xy+=weight*gx*gy;yy+=weight*gy*gy;bx+=weight*gx*error;by+=weight*gy*error;
+        }
+        const determinant=xx*yy-xy*xy;
+        if(determinant<1e-6)break;
+        const dx=(yy*bx-xy*by)/determinant,dy=(xx*by-xy*bx)/determinant;
+        const nx=cx-dx,ny=cy-dy;
+        if(Math.hypot(nx-origin.x,ny-origin.y)>2||!occupied.has(`${Math.round(nx/2)*2},${Math.round(ny/2)*2}`))break;
+        cx=nx;cy=ny;if(Math.hypot(dx,dy)<.001)break;
+      }
+      const arcError=(x:number,y:number)=>best!.indices.reduce((sum,index)=>{
+        const error=Math.abs(Math.hypot(boundary[index].x-x,boundary[index].y-y)-radius);
+        return sum+(error<=tolerance?error*error:2*tolerance*error-tolerance*tolerance);
+      },0);
+      if(arcError(cx,cy)>arcError(origin.x,origin.y)){cx=origin.x;cy=origin.y;}
+      refined.push({...best.fit,x:cx,y:cy,residualPx:best.indices.reduce((sum,index)=>sum+Math.abs(Math.hypot(boundary[index].x-cx,boundary[index].y-cy)-radius),0)/best.indices.length});
       accepted.push(best.fit);
       best.indices.forEach(index => explained.add(index));
     }
-    fits.push(...accepted);
+    fits.push(...refined);
     // This is an image region, not a fabricated shot: it never enters scoring or MPI.
     regions.push({ areaPx2: c.points.length * 4, referenceRadiusPx: radius, id: componentId, centerX:c.bounds.left+c.bounds.width/2, centerY:c.bounds.top+c.bounds.height/2, width:c.bounds.width, height:c.bounds.height, reason: accepted.length ? `겹친 구멍에서 원호 근거가 있는 중심 ${accepted.length}개를 추정했습니다. 내부에 가려진 추가 탄착 위치는 미확정입니다.` : '구멍 경계가 부족해 개별 중심을 분리하지 못했습니다.' });
   }

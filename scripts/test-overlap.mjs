@@ -44,3 +44,9 @@ test('Rectangle tear is not silently converted into circular shots',()=>{
   const points=[];for(let y=120;y<=200;y+=2)for(let x=120;x<=200;x+=2)points.push({x,y});
   const r=splitHoleComponents([points],14);assert.equal(r.fits.length,0);assert.equal(r.regions.length,1);
 });
+test('Overlapping holes with fractional centers stay within one source pixel',()=>{
+ const centers=[{x:159.3,y:161.7},{x:180.7,y:160.3}];
+ const r=splitHoleComponents(components(centers),14);
+ assert.equal(r.fits.length,2);
+ for(const c of centers){const f=r.fits.reduce((a,b)=>Math.hypot(a.x-c.x,a.y-c.y)<Math.hypot(b.x-c.x,b.y-c.y)?a:b);assert.ok(Math.hypot(f.x-c.x,f.y-c.y)<1);assert.ok(f.residualPx<1);}
+});
