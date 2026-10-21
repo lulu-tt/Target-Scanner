@@ -430,7 +430,7 @@ export const App: React.FC = () => {
                   <button onClick={() => goToWorkspace('results')} className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 text-sm font-bold text-white dark:bg-slate-800 lg:hidden">분석 결과 확인 <ArrowRight size={17} /></button>
                 </div>
                 <div className={`min-w-0 space-y-4 lg:col-span-5 lg:block ${mobileView === 'results' ? 'block' : 'hidden'}`}>
-                  <ScoreCompletion shots={shots} regions={unresolvedRegions} reviews={effectiveReviews} conditioned={countConditioned} onConditioned={(value) => { setCountConditioned(value); setScoreAcknowledged(false); }} calibration={calibration} expected={targetShotCount} acknowledged={scoreAcknowledged} cardTotal={cardTotal} onReviews={setScoreReviews} onAcknowledge={setScoreAcknowledged} onCardTotal={setCardTotal}/>
+                  <ScoreCompletion virtualPins={virtualPins} shots={shots} regions={unresolvedRegions} reviews={effectiveReviews} conditioned={countConditioned} onConditioned={(value) => { setCountConditioned(value); setScoreAcknowledged(false); }} calibration={calibration} expected={targetShotCount} acknowledged={scoreAcknowledged} cardTotal={cardTotal} onReviews={setScoreReviews} onAcknowledge={setScoreAcknowledged} onCardTotal={setCardTotal}/>
                   <ScoreBoard imageUrl={imageUrl} virtualPins={virtualPins} calibration={calibration} unresolvedRegions={unresolvedRegions} shots={shots} stats={stats} targetCount={targetShotCount} analysisWarnings={analysisWarnings} selectedShotId={selectedShotId} onSelectShot={(id) => { setSelectedShotId(id); if (id) goToWorkspace('target'); }} />
                 </div>
               </div>

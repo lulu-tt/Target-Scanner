@@ -1,12 +1,16 @@
 import React from 'react';
+import { VirtualPin } from '../utils/virtualPins';
+import { integerScoreSummary } from '../utils/scoringAudit';
 import { RegionScoreReview, ShotPoint, TargetCalibration } from '../types/target';
 import { UnresolvedRegion } from '../utils/overlapDetection';
 import { regionLocatedCount } from '../utils/regionProposals';
 import { completeScore, regionScoreRange } from '../utils/scoreCompletion';
-interface Props { conditioned:boolean; onConditioned:(b:boolean)=>void; shots:ShotPoint[]; regions:UnresolvedRegion[]; reviews:RegionScoreReview[]; calibration:TargetCalibration; expected:number; acknowledged:boolean; cardTotal:number|null; onReviews:(r:RegionScoreReview[])=>void; onAcknowledge:(b:boolean)=>void; onCardTotal:(n:number|null)=>void; }
+interface Props { virtualPins:VirtualPin[]; conditioned:boolean; onConditioned:(b:boolean)=>void; shots:ShotPoint[]; regions:UnresolvedRegion[]; reviews:RegionScoreReview[]; calibration:TargetCalibration; expected:number; acknowledged:boolean; cardTotal:number|null; onReviews:(r:RegionScoreReview[])=>void; onAcknowledge:(b:boolean)=>void; onCardTotal:(n:number|null)=>void; }
 export function ScoreCompletion(p:Props){
  const blank=p.calibration.targetType==='blank';
  const result=completeScore(p.shots,p.regions,p.reviews,p.expected,p.calibration,p.acknowledged,p.cardTotal);
+ const integer=integerScoreSummary(p.shots,p.virtualPins,p.calibration);
+ const showInteger=result.estimateReady&&integer?.count===result.count&&!p.reviews.some(r=>r.confirmedTotal!==undefined);
  const update=(id:string,patch:Partial<RegionScoreReview>)=>{
    const old=p.reviews.find(r=>r.regionId===id)??{regionId:id,additionalCount:0};
    const n=patch.additionalCount??old.additionalCount;
@@ -20,6 +24,7 @@ export function ScoreCompletion(p:Props){
   {!result.override && <div aria-label="선택 발수 추정 총점" data-estimate-ready={result.estimateReady} data-estimate-total={result.estimateReady?result.proposedTotal:''} className="rounded-2xl bg-slate-900 p-4 text-white dark:bg-slate-800">
     <p className="text-sm font-bold">{blank?'백지 표적':p.expected>0?`${p.expected}발 기준 전체 추정 총점`:'발수 미입력'}</p>
     <p className="mt-2 text-4xl font-black">{result.estimateReady?`${result.proposedTotal.toFixed(1)}점`:p.calibration.targetType==='blank'?'점수 기준 없음':'전체 추정 불가'}</p>
+    {showInteger && <p className="mt-2 text-sm font-bold" data-completion-integer={integer!.total}>정수 채점 환산 {integer!.total}점 / {p.expected*10}점 <span className="text-xs font-normal text-slate-300">· 위 총점은 소수점 기준</span></p>}
     <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-700 pt-3 text-sm"><div><p className="text-xs text-slate-300">감지 ({p.shots.length}발)</p><p className="mt-1 font-bold">{p.calibration.targetType==='blank'?'—':`${result.imageScore.toFixed(1)}점`}</p></div><div><p className="text-xs text-purple-200">추정 ({result.count-p.shots.length}발)</p><p className="mt-1 font-bold text-purple-200">{p.calibration.targetType==='blank'?'—':`${result.virtualScore.toFixed(1)}점`}</p></div></div>
     <p className="mt-3 text-xs leading-relaxed text-slate-300">{blank?'추정 핀은 겹친 구멍 안의 예시 위치입니다. 아래에서 추가 발수를 수정할 수 있습니다.':'부족한 발수를 겹침으로 가정한 참고값입니다. 추정 핀은 실제 감지 위치가 아니며, 표적 보정과 추정 위치에 따라 점수가 달라집니다.'}</p>
     {!result.estimateReady&&p.calibration.targetType!=='blank'&&<p className="mt-2 text-xs text-amber-300">{result.excess>0?'이미지 후보가 선택 발수보다 많습니다. 오검출을 수정하거나 발수를 바꿔주세요.':result.unresolved?'구멍 내부 근거가 부족하거나 수정으로 미배정 발수가 남았습니다. 영역 발수 또는 핀을 확인해주세요.':'일부 점수가 비어 있거나 잘못되었습니다. 추가 점수를 확인해주세요.'}</p>}

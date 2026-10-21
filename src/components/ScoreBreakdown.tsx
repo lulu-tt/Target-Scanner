@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { ShotPoint, TargetCalibration } from '../types/target';
+import { auditShotScore } from '../utils/scoringAudit';
 import { VirtualPin } from '../utils/virtualPins';
-import { calculateShotScore, centerRing, ISSF_AIR_RIFLE } from '../utils/issfSpecs';
+import { calculateShotScore, ISSF_AIR_RIFLE } from '../utils/issfSpecs';
 
 interface Props {
   imageUrl: string; shots: ShotPoint[]; virtualPins: VirtualPin[]; calibration: TargetCalibration;
@@ -14,6 +15,9 @@ export function ScoreBreakdown({ imageUrl, shots, virtualPins, calibration: c, s
   const rows = useMemo(() => [...shots.map(s => ({ ...s, displayId: `#${s.shotNumber}`, source: 'image' as const })),
     ...virtualPins.map((p, i) => { const v = calculateShotScore(p.pixelX, p.pixelY, c); return { ...p, displayId: `E${i + 1}`, source: 'estimate' as const,
       offsetX_mm: v.offsetX_mm, offsetY_mm: v.offsetY_mm, distance_mm: v.distanceMm }; })], [shots, virtualPins, c]);
+  const audits = rows.map(row => auditShotScore(row, c));
+  const integerSum = (items: typeof rows) => items.reduce((sum, row) => sum + (auditShotScore(row, c)?.integer ?? 0), 0);
+  const boundaryRows = rows.filter((r, i) => r.source === 'image' && audits[i]?.needsReview);
   const groups = [
     { source: 'image', label: '감지', color: '#047857', rows: rows.filter(r => r.source === 'image') },
     { source: 'estimate', label: '추정', color: '#9333ea', rows: rows.filter(r => r.source === 'estimate') },
@@ -47,17 +51,18 @@ export function ScoreBreakdown({ imageUrl, shots, virtualPins, calibration: c, s
       </svg>
     </div>
     <p className="mt-2 text-[11px] text-slate-500">초록: 감지 · 보라: 추정 · {blank ? '좌표는 사진 왼쪽 위를 기준으로 한 비율입니다.' : '빨간 십자: 표적 중심'} {expanded && <span>· 좌우로 밀어 보기</span>}</p>
-    {c.targetType !== 'blank' && <p className="mt-2 text-xs leading-relaxed text-slate-500">4.5mm 탄환 가장자리가 닿는 높은 링으로 채점합니다. 중심 링과 최종 점수는 다를 수 있습니다.</p>}
+    {c.targetType !== 'blank' && <p className="mt-2 text-xs leading-relaxed text-slate-500">핀 옆 숫자는 소수점입니다. 4.5mm 탄환 가장자리가 닿는 높은 링으로 채점합니다. 정수는 각 핀의 링 점수를 합산하고, 소수점은 각 링을 10등분해 합산합니다.</p>}
     <div className="mt-4 space-y-5">
-      {groups.map(g => <div key={g.source}><h4 className="mb-2 text-base font-extrabold" style={{ color: g.color }}>{g.label} {g.rows.length}개 · {c.targetType === 'blank' ? '—' : `${sum(g.rows).toFixed(1)}점`}</h4>
-        <table className="w-full table-fixed text-right text-[11px] sm:text-xs"><thead className="bg-slate-100 text-slate-500 dark:bg-slate-800"><tr><th className="w-11 py-2 text-left">핀</th><th>점수</th>{blank ? <><th>사진 X %</th><th>사진 Y %</th></> : <><th>중심 링</th><th>거리 mm</th><th>X mm</th><th>Y mm</th></>}</tr></thead>
-          <tbody>{g.rows.map(r => <tr key={r.id} data-detail-id={r.id} data-detail-source={r.source} data-detail-score={r.score} tabIndex={0} aria-label={`${g.label} ${r.displayId} ${blank ? '점수 기준 없음' : `${r.score.toFixed(1)}점`}, 표적에서 확인`} aria-selected={selectedShotId === r.id}
+      {groups.map(g => <div key={g.source}><h4 className="mb-2 text-base font-extrabold" style={{ color: g.color }}>{g.label} {g.rows.length}개 · {c.targetType === 'blank' ? '—' : `${sum(g.rows).toFixed(1)}점 · 정수 ${integerSum(g.rows)}점`}</h4>
+        <table className="w-full table-fixed text-right text-[11px] sm:text-xs"><thead className="bg-slate-100 text-slate-500 dark:bg-slate-800"><tr><th className="w-11 py-2 text-left">핀</th><th>{blank ? '점수' : '소수점'}</th>{blank ? <><th>사진 X %</th><th>사진 Y %</th></> : <><th>정수</th><th>거리 mm</th><th>X mm</th><th>Y mm</th></>}</tr></thead>
+          <tbody>{g.rows.map(r => <tr key={r.id} data-detail-id={r.id} data-detail-source={r.source} data-detail-score={r.score} data-integer-score={blank ? undefined : auditShotScore(r,c)?.integer} data-boundary-review={r.source === 'image' && !!auditShotScore(r,c)?.needsReview} tabIndex={0} aria-label={`${g.label} ${r.displayId} ${blank ? '점수 기준 없음' : `${r.score.toFixed(1)}점`}, 표적에서 확인`} aria-selected={selectedShotId === r.id}
             onClick={() => select(r.id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(r.id); } }}
             className={`h-11 cursor-pointer border-b border-slate-100 tabular-nums dark:border-slate-800 ${selectedShotId === r.id ? 'bg-purple-50 dark:bg-purple-950' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-            <td className="text-left font-bold" style={{ color: g.color }}>{r.displayId}</td><td className="font-bold">{c.targetType === 'blank' ? '—' : r.score.toFixed(1)}</td>{blank ? <><td>{(r.pixelX / 8).toFixed(1)}</td><td>{(r.pixelY / 8).toFixed(1)}</td></> : <><td>{centerRing(Math.hypot((r.pixelX - c.centerX) / c.pxPerMm, (r.pixelY - c.centerY) / (c.pxPerMmY ?? c.pxPerMm))) || '밖'}</td><td>{r.distance_mm.toFixed(2)}</td><td>{r.offsetX_mm.toFixed(2)}</td><td>{r.offsetY_mm.toFixed(2)}</td></>}
-          </tr>)}</tbody><tfoot><tr className="h-11 font-extrabold"><td className="text-left">소계</td><td>{c.targetType === 'blank' ? '—' : sum(g.rows).toFixed(1)}</td><td colSpan={blank ? 2 : 4}>{g.rows.length}발</td></tr></tfoot></table>
+            <td className="text-left font-bold" style={{ color: g.color }}>{r.displayId}</td><td className="font-bold">{c.targetType === 'blank' ? '—' : r.score.toFixed(1)}</td>{blank ? <><td>{(r.pixelX / 8).toFixed(1)}</td><td>{(r.pixelY / 8).toFixed(1)}</td></> : <><td className={r.source === 'image' && auditShotScore(r,c)?.needsReview ? 'font-bold text-amber-700' : ''}>{auditShotScore(r,c)?.integer}{r.source === 'image' && auditShotScore(r,c)?.needsReview ? '*' : ''}</td><td>{r.distance_mm.toFixed(2)}</td><td>{r.offsetX_mm.toFixed(2)}</td><td>{r.offsetY_mm.toFixed(2)}</td></>}
+          </tr>)}</tbody><tfoot><tr className="h-11 font-extrabold"><td className="text-left">소계</td><td>{c.targetType === 'blank' ? '—' : sum(g.rows).toFixed(1)}</td>{!blank && <td>{integerSum(g.rows)}</td>}<td colSpan={blank ? 2 : 3}>{g.rows.length}발</td></tr></tfoot></table>
       </div>)}
     </div>
-    <div className="mt-3 rounded-xl bg-slate-100 p-3 font-bold dark:bg-slate-800" data-breakdown-total={blank ? undefined : sum(rows)}>감지 + 추정 = {c.targetType === 'blank' ? '점수 기준 없음' : `${sum(rows).toFixed(1)}점`}</div>
+    <div className="mt-3 rounded-xl bg-slate-100 p-3 font-bold dark:bg-slate-800" data-breakdown-total={blank ? undefined : sum(rows)} data-integer-total={blank ? undefined : integerSum(rows)}>핀 위치 기준 합계: {c.targetType === 'blank' ? '점수 기준 없음' : `${sum(rows).toFixed(1)}점 (소수점) · ${integerSum(rows)}점 (정수)`}</div>
+    {!blank && boundaryRows.length > 0 && <details className="mt-3 text-xs leading-relaxed text-amber-800 dark:text-amber-300"><summary className="flex min-h-11 cursor-pointer items-center font-bold">* 경계 확인 {boundaryRows.length}개</summary><p>표시한 핀은 1픽셀 또는 탄흔 경계 오차 안에서 정수 판정이 달라질 수 있습니다. 실제 판정 범위나 확률을 뜻하지 않습니다.</p>{boundaryRows.map(r => { const a = auditShotScore(r,c)!; return <p key={r.id}>{r.displayId}: 정수 {a.integer}점 · 링 판정 경계까지 {a.gapMm.toFixed(3)}mm · 위치 오차 검토 {a.reviewLow}–{a.reviewHigh}점</p>; })}</details>}
   </section>;
 }
