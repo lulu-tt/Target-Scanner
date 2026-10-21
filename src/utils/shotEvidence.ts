@@ -19,5 +19,6 @@ export function summarizeEvidence(shots: ShotPoint[], expectedCount: number) {
 export function summarizeDisplayEvidence(shots: ShotPoint[], estimatedPinCount: number, expectedCount: number) {
   const source = summarizeEvidence(shots, expectedCount);
   return { ...source, detected: source.detected + source.estimated, estimated: estimatedPinCount,
-    unresolved: expectedCount > 0 ? Math.max(0, expectedCount - shots.length - estimatedPinCount) : null };
+    unresolved: expectedCount > 0 ? Math.max(0, expectedCount - shots.length - estimatedPinCount) : null,
+    excess: expectedCount > 0 ? Math.max(0, shots.length + estimatedPinCount - expectedCount) : 0 };
 }
