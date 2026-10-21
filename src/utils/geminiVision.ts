@@ -130,7 +130,7 @@ CRITICAL INSTRUCTIONS:
    - 'blank': A white paper target without black rings (often mounted on blue/green rubber or cardboard backing).
      Detect the true centroid of the bullet cluster as (centerX, centerY) on the 0-1000 scale, and set blackRadius to 118.
 2. STRICT PHYSICAL ROI & BULLET HOLE DETECTION (0-1000 scale):
-   - Expected shot count: ${targetCount > 0 ? `${targetCount} shots` : 'all visible shots'}.
+   - User-reported shot count (context only, never a quota): ${targetCount > 0 ? `${targetCount} shots` : 'all visible shots'}.
    - Bullet holes are physical 4.5mm round punctures through paper revealing dark/blue backing, ragged paper tear edges, and pellet grease rings.
    - ⚠️ CRITICAL PHYSICAL ROI BOUNDARY (ZERO TOLERANCE):
      ALL valid bullet holes MUST be located strictly WITHIN the concentric scoring ring area (distance from (centerX, centerY) <= 1.6 * blackRadius).
@@ -143,7 +143,10 @@ CRITICAL INSTRUCTIONS:
      Any mark with distance > 1.6 * blackRadius from center is 100% handwriting or background noise, NEVER a bullet hole.
 3. OVERLAPPING TORN CLUSTER HOLES:
    - In targets with 10, 15, or 20 shots, multiple pellets hit near the center, creating a single large torn cavity/hole in the 8-10 rings where backing paper is visible.
-   - You MUST distribute the requested shots inside this central torn cavity and its perimeter lobes so the total shot count matches ${targetCount > 0 ? targetCount : 'all detected'}.
+   - Return ONLY individually distinguishable hole centers supported by visible image evidence.
+   - NEVER distribute, invent, or duplicate coordinates to match the user-reported count.
+   - When overlapping shots cannot be separated, return one candidate for that connected cavity.
+   - If no bullet holes are visible, return an empty shots array. Fewer or more candidates than the reported count are allowed.
 4. RESPONSE FORMAT:
    Return strictly valid JSON matching this schema:
    {
@@ -234,21 +237,13 @@ CRITICAL INSTRUCTIONS:
 
   // 구글 비전 표준 [0, 1000] 정규화 좌표계를 800x800 캔버스 좌표계로 정확하게 리스케일링
   const toCanvasCoord = (val: number, fallback = 400): number => {
-    if (typeof val !== 'number' || isNaN(val)) return fallback;
-    // 0~1000 스케일 (일반적인 구글 비전 모델 응답)
-    if (val > 1.0) {
-      return Math.round((val / 1000) * 800);
-    }
-    // 0.0~1.0 소수점 비율인 경우
-    return Math.round(val * 800);
+    if (typeof val !== 'number' || !Number.isFinite(val) || val < 0 || val > 1000) return fallback;
+    return Math.round((val / 1000) * 800);
   };
 
   const toCanvasRadius = (val: number, fallback = 95): number => {
-    if (typeof val !== 'number' || isNaN(val)) return fallback;
-    if (val > 1.0) {
-      return Math.round((val / 1000) * 800);
-    }
-    return Math.round(val * 800);
+    if (typeof val !== 'number' || !Number.isFinite(val) || val <= 0 || val > 1000) return fallback;
+    return Math.round((val / 1000) * 800);
   };
 
   const centerX = toCanvasCoord(parsed.centerX, 400);
@@ -285,57 +280,25 @@ CRITICAL INSTRUCTIONS:
   const validCandidates: Array<{ pixelX: number; pixelY: number }> = [];
 
   rawShots.forEach((s: any) => {
+    // 잘못된 응답을 과녁 중앙 좌표로 바꾸면 존재하지 않는 탄착점이 됩니다.
+    if (!s || !Number.isFinite(s.x) || !Number.isFinite(s.y)
+      || s.x < 0 || s.x > 1000 || s.y < 0 || s.y > 1000) return;
     const pixelX = toCanvasCoord(s.x, centerX);
     const pixelY = toCanvasCoord(s.y, centerY);
     const distPx = Math.hypot(pixelX - centerX, pixelY - centerY);
     const distMm = distPx / pxPerMm;
 
     if (distMm <= maxAllowedDistanceMm && distPx <= maxAllowedRadiusPx) {
-      validCandidates.push({ pixelX, pixelY });
+      if (!validCandidates.some((candidate) => candidate.pixelX === pixelX && candidate.pixelY === pixelY)) {
+        validCandidates.push({ pixelX, pixelY });
+      }
     } else {
       console.warn(`[ROI 필터링 제외] 외곽 메모/노이즈 배제: (${pixelX}, ${pixelY}), 거리: ${distMm.toFixed(1)}mm`);
     }
   });
 
-  // 2차: 만약 다발성 찢어진 탄흔으로 인해 필터링 후 발수가 목표 발수(targetCount)보다 부족한 경우
-  // 외곽 글씨를 가져오는 대신, 중앙 흑점 내부의 찢어진 집탄군 영역 내에 추가 탄흔을 지능적으로 분배
-  if (targetCount > 0 && validCandidates.length < targetCount) {
-    const missingCount = targetCount - validCandidates.length;
-
-    // 중앙 흑점 내부의 집탄점들 탐색
-    const centralShots = validCandidates.filter(
-      (c) => Math.hypot(c.pixelX - centerX, c.pixelY - centerY) <= blackRadiusPx * 0.9
-    );
-
-    let clusterCenterX = centerX;
-    let clusterCenterY = centerY;
-
-    if (centralShots.length > 0) {
-      clusterCenterX = Math.round(
-        centralShots.reduce((sum, s) => sum + s.pixelX, 0) / centralShots.length
-      );
-      clusterCenterY = Math.round(
-        centralShots.reduce((sum, s) => sum + s.pixelY, 0) / centralShots.length
-      );
-    }
-
-    // 찢어진 탄흔 내부 클러스터 영역에 자연스러운 미세 오프셋(0.6mm~1.8mm)으로 추가 탄흔 배치
-    for (let i = 0; i < missingCount; i++) {
-      const angle = (i * 2.399) + Math.PI / 4;
-      const spreadMm = 0.6 + ((i % 4) * 0.35);
-      const spreadPx = spreadMm * pxPerMm;
-
-      validCandidates.push({
-        pixelX: Math.round(clusterCenterX + Math.cos(angle) * spreadPx),
-        pixelY: Math.round(clusterCenterY + Math.sin(angle) * spreadPx),
-      });
-    }
-  }
-
-  // 발수 제한 (요청된 발수에 정확히 정렬)
-  const finalCandidates = targetCount > 0 ? validCandidates.slice(0, targetCount) : validCandidates;
-
-  const detectedShots: ShotPoint[] = finalCandidates.map((pos, idx) => {
+  // 검출 후보를 그대로 유지합니다. 목표 발수에 맞춘 생성·잘라내기는 하지 않습니다.
+  const detectedShots: ShotPoint[] = validCandidates.map((pos, idx) => {
     const scoreResult = calculateShotScore(pos.pixelX, pos.pixelY, calibration);
 
     return {
@@ -354,5 +317,9 @@ CRITICAL INSTRUCTIONS:
     calibration,
     detectedShots,
     normalizedImageUrl: dataUrl,
+    warnings: [
+      'AI 감지 후보입니다. 겹친 구멍의 발수와 개별 위치는 사진만으로 확정할 수 없으니 확인해주세요.',
+      ...(targetType === 'blank' ? ['백지 표적은 실제 길이 기준을 알 수 없어 mm와 점수에 임시 배율을 사용합니다.'] : []),
+    ],
   };
 }

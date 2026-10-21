@@ -6,7 +6,7 @@
  *   2. [외곽 테이블 플러드필]: 표적지 밖 파란색 매트/바닥 노이즈 격리 제거
  *   3. [백지 표적지 스마트 자동 추적]: 흑점 없는 백지 표적지의 경우 실제 탄착군(클러스터) 중심 자동 피팅
  *   4. [28mm 사격 ROI 제한]: 상하단 메모(날짜, 평가 문구) 완전 배제 및 순수 탄환 구멍만 캡처
- *   5. [K-Means++ 탄착군 분배]: 10발 / 15발 / 20발 / 30발 다발성 찢어진 구멍 고정밀 좌표 산출
+ *   5. 연결된 구멍 후보만 반환하고 미검출 탄착점은 생성하지 않습니다.
  */
 
 import { TargetCalibration, ShotPoint, TargetMode } from '../types/target';
@@ -16,6 +16,7 @@ export interface VisionProcessResult {
   calibration: TargetCalibration;
   detectedShots: ShotPoint[];
   normalizedImageUrl: string;
+  warnings?: string[];
 }
 
 export interface VisionProcessOptions {
@@ -28,7 +29,7 @@ export async function processTargetImage(
   knownShots?: Array<{ x: number; y: number }>,
   options?: VisionProcessOptions
 ): Promise<VisionProcessResult> {
-  const targetCount = options?.targetCount ?? (options?.mode === '20shots' ? 20 : 10);
+  // 목표 발수는 검출 근거가 아니므로 좌표 생성이나 분할에 사용하지 않습니다.
 
   // 1. 이미지를 HTMLImageElement로 로드
   const img = await loadImage(imageSource);
@@ -153,6 +154,8 @@ export async function processTargetImage(
     targetType = 'blank';
   }
 
+  if (options?.mode === 'blank') targetType = 'blank';
+
   // ISSF 규격: 공기소총 흑점(4~10점 링) 직경은 정확히 30.5mm (반경 15.25mm)
   let pxPerMm = blackRadiusPx / ISSF_AIR_RIFLE.BLACK_CIRCLE_RADIUS_MM;
 
@@ -161,6 +164,7 @@ export async function processTargetImage(
     centerY,
     blackRadiusPx,
     pxPerMm,
+    targetType,
   };
 
   const detectedShots: ShotPoint[] = [];
@@ -268,7 +272,7 @@ export async function processTargetImage(
     }
 
     // 4단계: 유효 탄흔 픽셀 집합 복원
-    const holePixels: Array<{ x: number; y: number }> = [];
+    const holeMask = new Uint8Array(size * size);
     for (let py = 4; py < size - 4; py += 2) {
       for (let px = 4; px < size - 4; px += 2) {
         const idx = py * size + px;
@@ -277,7 +281,7 @@ export async function processTargetImage(
             for (let dx = -4; dx <= 4; dx += 2) {
               const nIdx = (py + dy) * size + (px + dx);
               if (isBlue[nIdx] && !isBg[nIdx]) {
-                holePixels.push({ x: px + dx, y: py + dy });
+                holeMask[nIdx] = 1;
               }
             }
           }
@@ -285,61 +289,41 @@ export async function processTargetImage(
       }
     }
 
-    // 5단계: 공간 그리드 및 유니온-파인드(Union-Find) 연결 성분 분할
-    const cellSize = 12;
-    const grid = new Map<string, Array<{ x: number; y: number }>>();
-
-    holePixels.forEach((p) => {
-      const gx = Math.floor(p.x / cellSize);
-      const gy = Math.floor(p.y / cellSize);
-      const key = `${gx},${gy}`;
-      if (!grid.has(key)) grid.set(key, []);
-      grid.get(key)!.push(p);
-    });
-
-    const cellKeys = Array.from(grid.keys());
-    const parent = new Map<string, string>();
-    cellKeys.forEach((k) => parent.set(k, k));
-
-    function findRoot(i: string): string {
-      let root = i;
-      while (parent.get(root) !== root) {
-        root = parent.get(root)!;
-      }
-      let curr = i;
-      while (curr !== root) {
-        const next = parent.get(curr)!;
-        parent.set(curr, root);
-        curr = next;
-      }
-      return root;
-    }
-
-    function unionCells(a: string, b: string) {
-      const rootA = findRoot(a);
-      const rootB = findRoot(b);
-      if (rootA !== rootB) parent.set(rootA, rootB);
-    }
-
-    for (let i = 0; i < cellKeys.length; i++) {
-      const [gx1, gy1] = cellKeys[i].split(',').map(Number);
-      for (let j = i + 1; j < cellKeys.length; j++) {
-        const [gx2, gy2] = cellKeys[j].split(',').map(Number);
-        if (Math.abs(gx1 - gx2) <= 1 && Math.abs(gy1 - gy2) <= 1) {
-          unionCells(cellKeys[i], cellKeys[j]);
+    // 5단계: 실제 2px 샘플 격자의 8방향 연결 성분을 구합니다.
+    // 기존 12px 셀 병합은 떨어진 구멍까지 합쳤고, 복원 픽셀 중복은 면적을 부풀렸습니다.
+    const visitedHoles = new Uint8Array(size * size);
+    const components: Array<Array<{ x: number; y: number }>> = [];
+    for (let y = 0; y < size; y += 2) {
+      for (let x = 0; x < size; x += 2) {
+        const seed = y * size + x;
+        if (!holeMask[seed] || visitedHoles[seed]) continue;
+        const pending = [seed];
+        const points: Array<{ x: number; y: number }> = [];
+        visitedHoles[seed] = 1;
+        for (let head = 0; head < pending.length; head++) {
+          const current = pending[head];
+          const cx = current % size;
+          const cy = Math.floor(current / size);
+          points.push({ x: cx, y: cy });
+          for (let dy = -2; dy <= 2; dy += 2) {
+            for (let dx = -2; dx <= 2; dx += 2) {
+              const nx = cx + dx;
+              const ny = cy + dy;
+              if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
+              const next = ny * size + nx;
+              if (holeMask[next] && !visitedHoles[next]) {
+                visitedHoles[next] = 1;
+                pending.push(next);
+              }
+            }
+          }
         }
+        components.push(points);
       }
     }
 
-    const componentMap = new Map<string, Array<{ x: number; y: number }>>();
-    cellKeys.forEach((k) => {
-      const root = findRoot(k);
-      if (!componentMap.has(root)) componentMap.set(root, []);
-      componentMap.get(root)!.push(...grid.get(k)!);
-    });
-
-    // 탄환 최소 면적 필터링 (최소 50픽셀 이상)
-    let validComponents = Array.from(componentMap.values())
+    // 중복 없는 샘플점 50개(이미지 면적 약 200px) 이상인 영역만 후보로 사용합니다.
+    let validComponents = components
       .filter((pts) => pts.length >= 50)
       .sort((a, b) => b.length - a.length);
 
@@ -374,109 +358,14 @@ export async function processTargetImage(
       return Math.hypot(avgX - centerX, avgY - centerY) <= maxRoiPx;
     });
 
-    const maxAllowedShots = targetCount > 0 ? targetCount : 10;
-    const candidateShots: Array<{ x: number; y: number }> = [];
+    // 연결된 구멍마다 후보 1개만 반환합니다. 겹친 탄흔의 개수나 중심을
+    // 목표 발수로부터 역산하지 않으며, 검출 영역이 없으면 빈 배열을 유지합니다.
+    const candidateShots = validComponents.map((pts) => ({
+      x: Math.round(pts.reduce((sum, p) => sum + p.x, 0) / pts.length),
+      y: Math.round(pts.reduce((sum, p) => sum + p.y, 0) / pts.length),
+    }));
 
-    if (validComponents.length > 0) {
-      // 6단계: 컴포넌트별 비례 발수 배정 및 K-Means++ 군집화
-      let compsToUse = validComponents;
-      if (maxAllowedShots < compsToUse.length) {
-        compsToUse = compsToUse.slice(0, maxAllowedShots);
-      }
-
-      const numComps = compsToUse.length;
-      const allocations = new Array<number>(numComps).fill(1);
-      const remainingShots = maxAllowedShots - numComps;
-
-      if (remainingShots > 0) {
-        const totalPoints = compsToUse.reduce((acc, c) => acc + c.length, 0);
-        let distributed = 0;
-        for (let i = 0; i < numComps; i++) {
-          const extra = Math.round(remainingShots * (compsToUse[i].length / totalPoints));
-          allocations[i] += extra;
-          distributed += extra;
-        }
-        const diff = remainingShots - distributed;
-        allocations[0] += diff;
-      }
-
-      // 각 컴포넌트별 핀 생성
-      compsToUse.forEach((pts, compIdx) => {
-        const nShots = allocations[compIdx];
-        if (nShots <= 0) return;
-
-        if (nShots === 1) {
-          const avgX = pts.reduce((acc, p) => acc + p.x, 0) / pts.length;
-          const avgY = pts.reduce((acc, p) => acc + p.y, 0) / pts.length;
-          candidateShots.push({ x: Math.round(avgX), y: Math.round(avgY) });
-        } else {
-          // K-Means++ 최적화
-          const centers: Array<{ x: number; y: number }> = [];
-          centers.push(pts[Math.floor(pts.length / 2)]);
-
-          for (let step = 1; step < nShots; step++) {
-            let maxDistSq = -1;
-            let bestPt = pts[0];
-            for (let pIdx = 0; pIdx < pts.length; pIdx += 2) {
-              const p = pts[pIdx];
-              let minDistToCenter = Infinity;
-              for (const c of centers) {
-                const dSq = (p.x - c.x) ** 2 + (p.y - c.y) ** 2;
-                if (dSq < minDistToCenter) minDistToCenter = dSq;
-              }
-              if (minDistToCenter > maxDistSq) {
-                maxDistSq = minDistToCenter;
-                bestPt = p;
-              }
-            }
-            centers.push({ x: bestPt.x, y: bestPt.y });
-          }
-
-          let curCenters = centers;
-          for (let iter = 0; iter < 12; iter++) {
-            const clusters: Array<Array<{ x: number; y: number }>> = Array.from(
-              { length: nShots },
-              () => []
-            );
-
-            for (const p of pts) {
-              let bestIdx = 0;
-              let bestDistSq = Infinity;
-              for (let cIdx = 0; cIdx < curCenters.length; cIdx++) {
-                const dSq = (p.x - curCenters[cIdx].x) ** 2 + (p.y - curCenters[cIdx].y) ** 2;
-                if (dSq < bestDistSq) {
-                  bestDistSq = dSq;
-                  bestIdx = cIdx;
-                }
-              }
-              clusters[bestIdx].push(p);
-            }
-
-            curCenters = clusters.map((clusterPts, cIdx) => {
-              if (clusterPts.length === 0) return curCenters[cIdx];
-              const sX = clusterPts.reduce((acc, p) => acc + p.x, 0) / clusterPts.length;
-              const sY = clusterPts.reduce((acc, p) => acc + p.y, 0) / clusterPts.length;
-              return { x: Math.round(sX), y: Math.round(sY) };
-            });
-          }
-
-          candidateShots.push(...curCenters);
-        }
-      });
-    } else {
-      // 구멍이 전혀 감지되지 않은 경우 기본 중앙 배치
-      for (let i = 0; i < maxAllowedShots; i++) {
-        const angle = i * 2.399;
-        const rPx = i === 0 ? 0 : Math.min(1.8 * pxPerMm, i * 0.3 * pxPerMm);
-        candidateShots.push({
-          x: Math.round(centerX + Math.cos(angle) * rPx),
-          y: Math.round(centerY + Math.sin(angle) * rPx),
-        });
-      }
-    }
-
-    // 최종 발차별 탄착점 객체 구성 (정확히 maxAllowedShots 발수 보장)
-    candidateShots.slice(0, maxAllowedShots).forEach((pos, idx) => {
+    candidateShots.forEach((pos, idx) => {
       const scoreData = calculateShotScore(pos.x, pos.y, calibration);
       detectedShots.push({
         id: `shot-${idx + 1}`,
@@ -496,6 +385,10 @@ export async function processTargetImage(
     calibration,
     detectedShots,
     normalizedImageUrl: canvas.toDataURL('image/jpeg', 0.95),
+    warnings: knownShots?.length ? [] : [
+      '자동 감지는 연결된 구멍마다 후보 1개를 표시합니다. 겹친 구멍의 발수와 개별 위치는 확정할 수 없어 수동 확인이 필요합니다.',
+      ...(targetType === 'blank' ? ['백지 표적은 실제 길이 기준을 알 수 없어 mm와 점수에 임시 배율을 사용합니다.'] : []),
+    ],
   };
 }
 

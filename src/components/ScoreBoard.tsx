@@ -13,6 +13,8 @@ import { Target, Compass, Award, Sliders, CheckCircle2 } from 'lucide-react';
 interface ScoreBoardProps {
   shots: ShotPoint[];
   stats: GroupingStats;
+  targetCount: number;
+  analysisWarnings: string[];
   selectedShotId: string | null;
   onSelectShot: (id: string | null) => void;
 }
@@ -20,6 +22,8 @@ interface ScoreBoardProps {
 export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   shots,
   stats,
+  targetCount,
+  analysisWarnings,
   selectedShotId,
   onSelectShot,
 }) => {
@@ -42,12 +46,24 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
 
   return (
     <div className="flex flex-col gap-4 w-full">
+      {analysisWarnings.length > 0 && (
+        <div role="status" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+          <p className="font-bold">
+            {shots.length === 0 ? '탄착 후보를 찾지 못했습니다.' : `탄착 후보 ${shots.length}개 — 수동 확인 필요`}
+          </p>
+          {targetCount > 0 && shots.length !== targetCount && (
+            <p className="mt-1">선택한 {targetCount}발과 후보 수가 다릅니다. 부족한 좌표를 자동으로 채우지 않습니다.</p>
+          )}
+          {analysisWarnings.map((warning) => <p key={warning} className="mt-1 text-xs">{warning}</p>)}
+          <p className="mt-1 text-xs">표적에서 핀을 추가·이동·삭제해 확인하세요. 아래 점수와 통계는 현재 표시된 후보만 기준으로 계산합니다.</p>
+        </div>
+      )}
       {/* 1. 상단 히어로 스코어 카드 (시원시원한 대형 폰트) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-5 shadow-xl shadow-slate-200/40 dark:shadow-none flex flex-col gap-4 transition-colors">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5 uppercase tracking-wider">
             <Award className="w-4 h-4 text-amber-500" />
-            세션 종합 점수 ({stats.totalShots}발 완료)
+            현재 탄착점 합계 ({stats.totalShots}개)
           </span>
           <span className="text-xs font-black bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-500/30">
             ISSF 소수점
@@ -65,7 +81,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
           </div>
 
           <div className="text-right">
-            <span className="text-[11px] font-bold text-slate-400 block">발당 평균</span>
+            <span className="text-[11px] font-bold text-slate-400 block">표시된 탄착점 평균</span>
             <span className="text-2xl font-black text-red-600 dark:text-amber-400">
               {stats.averageScore.toFixed(2)}
             </span>

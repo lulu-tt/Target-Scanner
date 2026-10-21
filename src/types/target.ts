@@ -43,6 +43,7 @@ export interface SavedSession {
   mode?: TargetMode;
   shots: ShotPoint[];
   stats: GroupingStats;
+  analysisWarnings?: string[]; // 자동 분석의 불확실성 안내도 기록과 함께 보존
   targetImage?: string;     // 썸네일 이미지 dataUrl
   note?: string;
 }

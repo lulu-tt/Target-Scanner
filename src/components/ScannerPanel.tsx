@@ -111,7 +111,7 @@ export const ScannerPanel: React.FC<ScannerPanelProps> = ({
               {hasApiKey ? 'Gemini AI 비전 엔진' : '온디바이스 기본 엔진 v3.0'}
             </span>
             <span className="text-[10px] text-slate-500 dark:text-slate-400">
-              {hasApiKey ? '손글씨/메모 100% 무시 · 밀집 탄흔 분리' : '무료 AI 키 등록 시 손글씨 100% 차단'}
+              {hasApiKey ? '이미지 기반 탄착 후보 감지 · 수동 확인 필요' : '겹친 구멍은 후보 1개로 표시 · 발수 자동 보충 없음'}
             </span>
           </div>
         </div>

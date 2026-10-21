@@ -54,6 +54,7 @@ export const App: React.FC = () => {
     pxPerMm: 16.0,
   });
   const [shots, setShots] = useState<ShotPoint[]>([]);
+  const [analysisWarnings, setAnalysisWarnings] = useState<string[]>([]);
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
   const [activePresetId, setActivePresetId] = useState<string>(SAMPLE_PRESETS[0].id);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -111,6 +112,7 @@ export const App: React.FC = () => {
       setImageUrl(result.normalizedImageUrl);
       setCalibration(result.calibration);
       setShots(result.detectedShots);
+      setAnalysisWarnings(result.warnings ?? []);
       setSelectedShotId(null);
       showToast(`'${preset.name}' 샘플이 로드되었습니다.`);
     } catch (err) {
@@ -142,7 +144,7 @@ export const App: React.FC = () => {
               mode,
               targetCount: count,
             });
-            showToast(`✨ Gemini AI 정밀 분석 완료! (${result.detectedShots.length}발 감지됨)`);
+            showToast(`Gemini AI: 탄착 후보 ${result.detectedShots.length}개 감지. 결과를 확인해주세요.`);
           } catch (aiErr: any) {
             console.warn('Gemini AI 분석 실패, 온디바이스 v3.0 엔진으로 자동 폴백합니다:', aiErr);
             showToast('AI 분석 일시 지연: 온디바이스 v3.0 엔진으로 대체 분석합니다.');
@@ -158,12 +160,13 @@ export const App: React.FC = () => {
             mode,
             targetCount: count,
           });
-          showToast(`온디바이스 분석 완료! (${result.detectedShots.length}발 감지됨)`);
+          showToast(`온디바이스: 탄착 후보 ${result.detectedShots.length}개 감지. 결과를 확인해주세요.`);
         }
 
         setImageUrl(result.normalizedImageUrl);
         setCalibration(result.calibration);
         setShots(result.detectedShots);
+        setAnalysisWarnings(result.warnings ?? []);
         setSelectedShotId(null);
       } catch (err) {
         console.error(err);
@@ -177,6 +180,7 @@ export const App: React.FC = () => {
 
   // 파일 업로드 핸들러: [프로세스 개편] 사진 먼저 등록 -> 사격 목표 발수/유형 선택 순서
   const handleFileUpload = async (file: File) => {
+    setAnalysisWarnings([]);
     setCurrentFile(file);
     setActivePresetId('');
     setSelectedShotId(null);
@@ -243,6 +247,7 @@ export const App: React.FC = () => {
       shots: [...shots],
       stats: { ...stats },
       targetImage: imageUrl,
+      analysisWarnings: [...analysisWarnings],
     };
 
     const updated = [newSession, ...savedSessions];
@@ -259,6 +264,7 @@ export const App: React.FC = () => {
   const handleLoadSession = (session: SavedSession) => {
     if (session.targetImage) setImageUrl(session.targetImage);
     setShots(session.shots);
+    setAnalysisWarnings(session.analysisWarnings ?? ['이전 버전 기록은 임의 보충된 탄착점을 포함할 수 있습니다. 원본 사진으로 다시 분석해주세요.']);
     setSelectedShotId(null);
     showToast(`'${session.date}' 세션을 불러왔습니다.`);
   };
@@ -412,6 +418,8 @@ export const App: React.FC = () => {
               <ScoreBoard
                 shots={shots}
                 stats={stats}
+                targetCount={targetShotCount}
+                analysisWarnings={analysisWarnings}
                 selectedShotId={selectedShotId}
                 onSelectShot={setSelectedShotId}
               />
