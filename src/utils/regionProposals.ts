@@ -8,7 +8,7 @@ export function regionLocatedCount(r:UnresolvedRegion,shots:ShotPoint[]) {
 export function proposeRegions(regions:UnresolvedRegion[],shots:ShotPoint[],c:TargetCalibration,expected:number,conditioned=false):RegionScoreReview[] {
  const remaining=expected>0?Math.max(0,expected-shots.length):Infinity;
 
- const eligible=regions.filter(r=>Number.isFinite(r.areaPx2)&&Number.isFinite(r.referenceRadiusPx)&&r.areaPx2!>0&&r.referenceRadiusPx!>0);
+ const eligible=regions.filter(r=>Number.isFinite(r.areaPx2)&&Number.isFinite(r.referenceRadiusPx)&&r.areaPx2!>0&&r.referenceRadiusPx!>0&&!!r.pinCandidates?.length);
  const proposals=eligible.map(r=>{
   const equivalent=r.areaPx2!/(Math.PI*r.referenceRadiusPx!**2),located=regionLocatedCount(r,shots);
   // 70% effective visible area is a deliberately explicit overlap prior, not measured accuracy.

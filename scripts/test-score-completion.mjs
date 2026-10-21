@@ -6,7 +6,7 @@ const {completeScore,regionScoreRange}=await load('src/utils/scoreCompletion.ts'
 const {fitPrintedRings}=await load('src/utils/ringCalibration.ts');
 const c={centerX:400,centerY:400,blackRadiusPx:152.5,pxPerMm:10,pxPerMmY:10,targetType:'standard',verified:true};
 const shots=[{score:9.5},{score:10}];
-const regions=[{id:'r1',centerX:410,centerY:400,width:12,height:12}];
+const regions=[{id:'r1',centerX:410,centerY:400,width:12,height:12,pinCandidates:[{x:410,y:400}]}];
 const score=(reviews=[],expected=3,cal=c,ack=true,total=null)=>completeScore(shots,regions,reviews,expected,cal,ack,total);
 test('Incomplete count cannot finalize',()=>assert.equal(score().complete,false));
 test('Additional count alone gives a range and remains provisional',()=>{const s=score([{regionId:'r1',additionalCount:1}]);assert.equal(s.count,3);assert.equal(s.complete,false);assert.ok(s.min<=s.max);});
@@ -31,3 +31,5 @@ test('Automatic estimated total requires acknowledgment and invalid manual score
 });
 test('Full selected-count estimate is available before review and ring confirmation',()=>{const auto=[{regionId:'r1',additionalCount:1,estimatedTotal:9.4,source:'count-conditioned'}];const r=score(auto,3,{...c,verified:false},false);assert.equal(r.estimateReady,true);assert.equal(r.complete,false);assert.equal(r.imageScore,19.5);assert.equal(r.virtualScore,9.4);assert.equal(r.proposedTotal,28.9);});
 test('No full estimate for overcount, missing score, invalid manual score or blank',()=>{for(const r of [score([{regionId:'r1',additionalCount:2,estimatedTotal:20}]),score([{regionId:'r1',additionalCount:1}]),score([{regionId:'r1',additionalCount:1,estimatedTotal:9,confirmedTotal:12}]),score([{regionId:'r1',additionalCount:1,estimatedTotal:9}],3,{...c,targetType:'blank'})])assert.equal(r.estimateReady,false);});
+
+test('Legacy automatic counts without mask support cannot report all shots assigned',()=>{const r=completeScore([],regions.map(r=>({...r,pinCandidates:[]})),[{regionId:'r1',additionalCount:10,source:'count-conditioned',estimatedTotal:90}],10,c,false,null);assert.equal(r.count,0);assert.equal(r.unresolved,10);assert.equal(r.estimateReady,false);});

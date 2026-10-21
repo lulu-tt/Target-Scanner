@@ -23,7 +23,7 @@ export interface VisionProcessResult {
   unresolvedRegions?: UnresolvedRegion[];
   aiComparison?: {model:string;inputWidth:number;inputHeight:number;localShots:ShotPoint[];aiShots:ShotPoint[];matched:number;added:number;rejected:number};
   holeRadiusPx?: number | null;
-  analysisMetadata?: {sourceWidth:number;sourceHeight:number;roiWidth:number;roiHeight:number;sampleStep:number;native:boolean};
+  analysisMetadata?: {sourceWidth:number;sourceHeight:number;roiWidth:number;roiHeight:number;sampleStep:number;native:boolean;holeMask?:'color'|'contrast'};
 }
 
 export interface VisionProcessOptions {

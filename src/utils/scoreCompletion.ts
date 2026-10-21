@@ -13,7 +13,7 @@ export function regionScoreRange(r: UnresolvedRegion, c: TargetCalibration) {
   return {min,max};
 }
 export function completeScore(shots: ShotPoint[], regions: UnresolvedRegion[], reviews: RegionScoreReview[], expected: number, c: TargetCalibration, acknowledged: boolean, cardTotal: number | null) {
-  const valid=reviews.filter(r=>regions.some(p=>p.id===r.regionId)&&Number.isInteger(r.additionalCount)&&r.additionalCount>0);
+  const valid=reviews.filter(r=>regions.some(p=>p.id===r.regionId&&((r.source!=='auto-area'&&r.source!=='count-conditioned')||!!p.pinCandidates?.length))&&Number.isInteger(r.additionalCount)&&r.additionalCount>0);
   const count=shots.length+valid.reduce((s,r)=>s+r.additionalCount,0);
   const unresolved=expected>0?Math.max(0,expected-count):null;
   const located=shots.reduce((s,p)=>s+p.score,0);
