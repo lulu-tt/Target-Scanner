@@ -16,7 +16,7 @@ for(const photo of ['005','006']){
   assert(virtual+located===count,`${photo}/${count}: real plus virtual pins equal selected count`);
   await click('loc=role:button[name="분석 결과"]');
   const ui=await p.evaluate(()=>({total:Number(document.querySelector('[aria-label="선택 발수 추정 총점"]').dataset.estimateTotal),text:document.querySelector('[aria-label="선택 발수 추정 총점"]').textContent}));
-  assert(ui.text.includes('이미지 감지·분리 추정')&&ui.text.includes('가상·추가 추정'),`${photo}/${count}: image and virtual subtotals separately labeled`);
+  assert(ui.text.includes('감지 (')&&ui.text.includes('추정 ('),`${photo}/${count}: image and virtual subtotals separately labeled`);
   for(const width of [320,390,1440]){await p.cdp('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<768});assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${photo}/${count}: no overflow at ${width}px`);}
   await p.cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await p.evaluate(()=>document.querySelector('[aria-label="선택 발수 추정 총점"]').scrollIntoView({block:'center'}));await p.screenshot({path:root+`/outputs/selected-counts/${photo}-${count}.png`});
   await click('loc=role:button[name="기록 저장"]');const saved=await p.evaluate(()=>JSON.parse(localStorage.getItem('targetscan_sessions'))[0]);console.log('Test record:',saved.id);

@@ -85,6 +85,6 @@ export async function analyzeTargetWithGemini(source: string | File, apiKey: str
     aiComparison: { model: modelUsed, inputWidth: crop.width, inputHeight: crop.height,
       localShots: geometry.detectedShots, aiShots: candidates, matched: fusion.matched, added: fusion.added, rejected: fusion.rejected },
     warnings: [...(geometry.warnings ?? []),
-      `Gemini 원본 표적 영역 ${crop.width}×${crop.height}px · ${modelUsed}. 기존 ${geometry.detectedShots.length}개 보존 / AI 일치 ${fusion.matched}개 / 원본 구멍 지지 추가 추정 ${fusion.added}개 / 미지지·중복 제외 ${fusion.rejected}개.`,
-      'AI 일치는 정확도 검증이 아닙니다. 완전히 겹쳐 보이지 않는 발수와 위치는 계속 가상 추정으로 표시합니다.'] };
+      `Gemini 원본 표적 영역 ${crop.width}×${crop.height}px · ${modelUsed}. 기존 ${geometry.detectedShots.length}개 보존 / AI 일치 ${fusion.matched}개 / 원본 구멍 지지 추가 감지 ${fusion.added}개 / 미지지·중복 제외 ${fusion.rejected}개.`,
+      'AI 일치는 정확도 검증이 아닙니다. 완전히 겹쳐 보이지 않는 발수와 위치는 계속 추정 핀으로 표시합니다.'] };
 }

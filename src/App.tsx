@@ -189,7 +189,7 @@ export const App: React.FC = () => {
               result = await analyzeTargetWithGemini(file, geminiApiKey, { mode, targetCount: count });
               aiAnalysisCache.current = { file, blank: mode === 'blank', result };
             }
-            showToast(`Gemini AI: 감지·추정 위치 ${result.detectedShots.length}개. 결과를 확인해주세요.`);
+            showToast(`Gemini AI: 감지 위치 ${result.detectedShots.length}개. 결과를 확인해주세요.`);
           } catch (aiErr: any) {
             console.warn('Gemini AI 분석 실패, 온디바이스 v3.0 엔진으로 자동 폴백합니다:', aiErr);
             showToast('AI 분석 일시 지연: 온디바이스 v3.0 엔진으로 대체 분석합니다.');
@@ -206,7 +206,7 @@ export const App: React.FC = () => {
             mode,
             targetCount: count,
           });
-          showToast(`온디바이스: 감지·추정 위치 ${result.detectedShots.length}개. 결과를 확인해주세요.`);
+          showToast(`온디바이스: 감지 위치 ${result.detectedShots.length}개. 결과를 확인해주세요.`);
         }
 
         setMobileView(count > 0 ? 'results' : 'target');
@@ -424,7 +424,7 @@ export const App: React.FC = () => {
                 </div>
                 <div className={`min-w-0 space-y-4 lg:col-span-5 lg:block ${mobileView === 'results' ? 'block' : 'hidden'}`}>
                   <ScoreCompletion shots={shots} regions={unresolvedRegions} reviews={effectiveReviews} conditioned={countConditioned} onConditioned={(value) => { setCountConditioned(value); setScoreAcknowledged(false); }} calibration={calibration} expected={targetShotCount} acknowledged={scoreAcknowledged} cardTotal={cardTotal} onReviews={setScoreReviews} onAcknowledge={setScoreAcknowledged} onCardTotal={setCardTotal}/>
-                  <ScoreBoard unresolvedRegions={unresolvedRegions} shots={shots} stats={stats} targetCount={targetShotCount} analysisWarnings={analysisWarnings} selectedShotId={selectedShotId} onSelectShot={(id) => { setSelectedShotId(id); if (id) goToWorkspace('target'); }} />
+                  <ScoreBoard estimatedPinCount={virtualPins.length} unresolvedRegions={unresolvedRegions} shots={shots} stats={stats} targetCount={targetShotCount} analysisWarnings={analysisWarnings} selectedShotId={selectedShotId} onSelectShot={(id) => { setSelectedShotId(id); if (id) goToWorkspace('target'); }} />
                 </div>
               </div>
             </>

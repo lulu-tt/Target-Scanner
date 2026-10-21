@@ -17,7 +17,7 @@ for(const [i,name] of files.entries()){
  const actual=await page.evaluate(()=>document.querySelector('tbody').rows.length);assert(actual===data.located,`Photo ${i+1}: real pin table excludes virtual pins`);
  await click('loc=role:button[name="분석 결과"]');if(!await page.evaluate(()=>document.querySelector('input[aria-label="부족 발수 겹침 가정"]').checked))await click('input[aria-label="부족 발수 겹침 가정"]');
  await click('loc=role:button[name="표적 보정"]');pins=await pinState();assert(pins.length+actual===expected,`Photo ${i+1}: virtual count visualizes area allocation once`);
- await click('loc=role:button[name="위치 수정"]');await click('loc=role:button[name="가상 핀 V1 선택"]');
+ await click('loc=role:button[name="위치 수정"]');await click('loc=role:button[name="추정 핀 E1 선택"]');
  await page.evaluate(()=>document.querySelector('canvas[aria-label="표적 사진과 탄착점"]').scrollIntoView({block:'center'}));
  const touch=await page.evaluate(()=>{const c=document.querySelector('canvas[aria-label="표적 사진과 탄착점"]').getBoundingClientRect(),b=document.querySelector('[data-virtual-pin]');return {start:{x:c.left+Number(b.dataset.x)*c.width/800,y:c.top+Number(b.dataset.y)*c.height/800},end:{x:c.left+10,y:c.top+10}};});
  await page.cdp('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
@@ -25,7 +25,7 @@ for(const [i,name] of files.entries()){
  await page.waitForFunction(()=>document.querySelector('[data-virtual-pin]').textContent.includes('수정'));
  const moved=await pinState();assert(moved.length===pins.length&&moved[0].text.includes('수정'),`Photo ${i+1}: touch drag edits virtual pin without creating a real pin`);
  assert(data.regions.some(r=>r.pinCandidates?.some(q=>q.x===moved[0].x&&q.y===moved[0].y)),`Photo ${i+1}: dragging onto blank paper snaps back into hole mask`);
- await click('loc=role:button[name="가상 핀 V2 선택"]');
+ await click('loc=role:button[name="추정 핀 E2 선택"]');
  await click('loc=role:button[name="선택 핀 삭제"]');let after=await pinState();assert(after[0].x===moved[0].x&&after[0].y===moved[0].y,`Photo ${i+1}: deleting another pin preserves moved virtual position`);assert(after.length===pins.length-1,`Photo ${i+1}: deleting virtual pin reduces additional count exactly once`);
  assert(await page.evaluate(n=>document.querySelector('tbody').rows.length===n,actual),`Photo ${i+1}: move/delete leaves actual-shot grouping input unchanged`);
  await click('loc=role:button[name="수정 완료"]');

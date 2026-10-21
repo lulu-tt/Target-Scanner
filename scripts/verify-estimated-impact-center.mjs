@@ -18,14 +18,14 @@ for(const photo of ['005','006']){
   rows.push({photo,count,x:a.x,y:a.y,virtual:a.pins.length});
  }
 }
-await click('loc=role:button[name="표적 보정"]');await click('loc=role:button[name="위치 수정"]');await click('loc=role:button[name="가상 핀 V1 선택"]');
+await click('loc=role:button[name="표적 보정"]');await click('loc=role:button[name="위치 수정"]');await click('loc=role:button[name="추정 핀 E1 선택"]');
 const before=await state();await p.evaluate(()=>document.querySelector('canvas[aria-label="표적 사진과 탄착점"]').scrollIntoView({block:'center'}));
 const touch=await p.evaluate(()=>{const r=document.querySelector('canvas[aria-label="표적 사진과 탄착점"]').getBoundingClientRect(),b=document.querySelector('[data-virtual-pin]');return {start:{x:r.left+Number(b.dataset.x)*r.width/800,y:r.top+Number(b.dataset.y)*r.height/800},end:{x:r.left+10,y:r.top+10}};});
 await p.cdp('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
 await p.cdp('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...touch.start,id:1}]});await p.cdp('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{...touch.end,id:1}]});await p.cdp('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
 await p.waitForFunction(()=>document.querySelector('[data-virtual-pin]').textContent.includes('수정'));
 const moved=await state();assert(Math.abs(moved.x-(before.x+(moved.pins.reduce((s,p)=>s+p.x,0)-before.pins.reduce((s,p)=>s+p.x,0))/before.n))<1e-9&&Math.abs(moved.y-(before.y+(moved.pins.reduce((s,p)=>s+p.y,0)-before.pins.reduce((s,p)=>s+p.y,0))/before.n))<1e-9,'Touch move recomputes whole mean');
-await click('loc=role:button[name="가상 핀 V2 선택"]');const deleted=moved.pins[1];await click('loc=role:button[name="선택 핀 삭제"]');const after=await state();assert(after.n===29&&after.complete==='false'&&after.text.includes('부분'), 'Deletion displays partial center instead of a 30-shot full estimate');
+await click('loc=role:button[name="추정 핀 E2 선택"]');const deleted=moved.pins[1];await click('loc=role:button[name="선택 핀 삭제"]');const after=await state();assert(after.n===29&&after.complete==='false'&&after.text.includes('부분'), 'Deletion displays partial center instead of a 30-shot full estimate');
 assert(Math.abs(after.x-(moved.x*30-deleted.x)/29)<1e-9&&Math.abs(after.y-(moved.y*30-deleted.y)/29)<1e-9,'Deletion removes exactly one coordinate from the mean');
 assert(await p.evaluate(()=>document.querySelector('tbody').rows.length===6),'Image-only shot statistics stay separate');
 await click('loc=role:button[name="수정 완료"]');

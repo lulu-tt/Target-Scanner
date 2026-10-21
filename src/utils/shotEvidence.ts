@@ -2,8 +2,8 @@ import { ShotPoint } from '../types/target';
 export function shotStatus(shot: ShotPoint) {
   return shot.isManuallyAdjusted ? 'manual' : shot.detectionStatus ?? 'legacy';
 }
-export const statusLabel = { detected: '감지', estimated: '추정', manual: '수동', legacy: '미검증 기록' };
-export const statusColor = { detected: '#10b981', estimated: '#f59e0b', manual: '#6366f1', legacy: '#94a3b8' };
+export const statusLabel = { detected: '감지', estimated: '감지', manual: '수동', legacy: '미검증 기록' };
+export const statusColor = { detected: '#10b981', estimated: '#10b981', manual: '#6366f1', legacy: '#94a3b8' };
 export function summarizeEvidence(shots: ShotPoint[], expectedCount: number) {
   return {
     detected: shots.filter(s => shotStatus(s) === 'detected').length,
@@ -13,4 +13,11 @@ export function summarizeEvidence(shots: ShotPoint[], expectedCount: number) {
     unresolved: expectedCount > 0 ? Math.max(0, expectedCount - shots.length) : null,
     excess: expectedCount > 0 ? Math.max(0, shots.length - expectedCount) : 0,
   };
+}
+
+/** Presentation categories; original detection statuses remain intact for saved evidence. */
+export function summarizeDisplayEvidence(shots: ShotPoint[], estimatedPinCount: number, expectedCount: number) {
+  const source = summarizeEvidence(shots, expectedCount);
+  return { ...source, detected: source.detected + source.estimated, estimated: estimatedPinCount,
+    unresolved: expectedCount > 0 ? Math.max(0, expectedCount - shots.length - estimatedPinCount) : null };
 }

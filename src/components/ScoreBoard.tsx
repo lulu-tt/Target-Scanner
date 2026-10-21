@@ -1,5 +1,5 @@
 import { UnresolvedRegion } from '../utils/overlapDetection';
-import { shotStatus, statusLabel, statusColor, summarizeEvidence } from '../utils/shotEvidence';
+import { shotStatus, statusLabel, statusColor, summarizeDisplayEvidence } from '../utils/shotEvidence';
 /**
  * [영자 실장의 모던 스코어보드 & 사수 분석 패널]
  * 작성자: 디자인 실장 영자 & 코다리 부장
@@ -14,6 +14,7 @@ import { Target, Compass, Award, Sliders } from 'lucide-react';
 
 interface ScoreBoardProps {
   shots: ShotPoint[];
+  estimatedPinCount: number;
   unresolvedRegions: UnresolvedRegion[];
   stats: GroupingStats;
   targetCount: number;
@@ -24,6 +25,7 @@ interface ScoreBoardProps {
 
 export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   shots,
+  estimatedPinCount,
   unresolvedRegions,
   stats,
   targetCount,
@@ -31,7 +33,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   selectedShotId,
   onSelectShot,
 }) => {
-  const evidence = summarizeEvidence(shots, targetCount);
+  const evidence = summarizeDisplayEvidence(shots, estimatedPinCount, targetCount);
   const sightGuide = getSightAdjustmentGuide(stats.mpiX_mm, stats.mpiY_mm);
 
   // 최고점 / 최저점 탄환
@@ -54,18 +56,18 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
       <section aria-label="탄착 분석 상태" className="surface-card p-4">
         <div className="grid grid-cols-3 gap-2 text-center">
           <div><p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">감지</p><p className="mt-1 text-2xl font-extrabold">{evidence.detected}<span className="ml-1 text-xs font-normal">발</span></p></div>
-          <div><p className="text-xs font-semibold text-amber-700 dark:text-amber-400">추정</p><p className="mt-1 text-2xl font-extrabold">{evidence.estimated}<span className="ml-1 text-xs font-normal">발</span></p></div>
+          <div><p className="text-xs font-semibold text-purple-700 dark:text-purple-400">추정</p><p className="mt-1 text-2xl font-extrabold">{evidence.estimated}<span className="ml-1 text-xs font-normal">발</span></p></div>
           <div><p className="text-xs font-semibold text-slate-500 dark:text-slate-400">미확정</p><p className="mt-1 text-2xl font-extrabold">{evidence.unresolved ?? '—'}<span className="ml-1 text-xs font-normal">{evidence.unresolved === null ? '발수 미입력' : '발'}</span></p></div>
         </div>
         {(evidence.manual > 0 || evidence.legacy > 0) && <p className="mt-3 text-xs text-slate-500">별도 표시: 수동 {evidence.manual}발 · 미검증 기록 {evidence.legacy}발</p>}
-        <p className="mt-3 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-500 dark:border-slate-800 dark:text-slate-400">감지는 독립된 구멍, 추정은 겹친 경계에서 찾은 중심입니다. 이 표의 미확정은 좌표가 없는 수입니다. 영역별로 점수를 기록해도 좌표 수는 늘어나지 않습니다. 겹침·미검출·표적 밖 탄착을 구별하지 못합니다.</p>
+        <p className="mt-3 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-500 dark:border-slate-800 dark:text-slate-400">감지는 이미지에서 찾은 탄착점, 추정은 부족한 발수를 겹친 영역에 배치한 핀입니다.</p>
         {evidence.excess > 0 && <p className="mt-2 text-xs font-bold text-red-600">선택 발수보다 {evidence.excess}개 많습니다. 오검출·과분할 여부를 확인해주세요.</p>}
         {unresolvedRegions.length > 0 && <details className="mt-1"><summary className="flex min-h-11 cursor-pointer items-center text-xs font-semibold">겹침·미확정 영역 {unresolvedRegions.length}곳 보기</summary><div className="space-y-2 text-xs leading-relaxed text-slate-500">{unresolvedRegions.map((r,i) => <p key={r.id}>영역 {i+1}: {r.reason}</p>)}</div></details>}
       </section>
       {analysisWarnings.length > 0 && (
         <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
           <p className="text-sm font-bold">{shots.length === 0 ? '탄착 후보를 찾지 못했습니다' : `탄착 후보 ${shots.length}개 · 확인이 필요해요`}</p>
-          <p className="mt-1 text-xs leading-relaxed">{targetCount > 0 && shots.length !== targetCount ? `선택한 ${targetCount}발과 후보 수가 다릅니다. ` : ''}겹침에서 추정한 위치도 포함되어 있습니다. 미확정에는 자동 좌표와 점수를 부여하지 않습니다. 총점 완성에서 추가 발수와 점수를 확인하세요.</p>
+          <p className="mt-1 text-xs leading-relaxed">{targetCount > 0 && shots.length !== targetCount ? `선택한 ${targetCount}발과 후보 수가 다릅니다. ` : ''}총점 완성에서 추가 발수와 점수를 확인하세요.</p>
           <details className="mt-1"><summary className="flex min-h-11 cursor-pointer items-center text-xs font-semibold underline underline-offset-4">분석 결과 확인 안내</summary><div className="space-y-2 pb-1 text-xs leading-relaxed">{analysisWarnings.map(warning => <p key={warning}>{warning}</p>)}<p>표적 보정에서 핀을 추가·이동·삭제하세요. 점수와 통계는 표시된 후보만 기준으로 계산합니다.</p></div></details>
         </div>
       )}
@@ -74,7 +76,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5 uppercase tracking-wider">
             <Award className="w-4 h-4 text-amber-500" />
-            이미지 탄착점 소계 ({stats.totalShots}개 · 가상 제외)
+            감지 탄착점 소계 ({stats.totalShots}개 · 추정 핀 제외)
           </span>
           <span className="text-xs font-black bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-500/30">
             {analysisWarnings.length ? '참고 점수' : '소수점 채점'}
@@ -92,7 +94,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
           </div>
 
           <div className="text-right">
-            <span className="text-[11px] font-bold text-slate-400 block">이미지 탄착점 평균</span>
+            <span className="text-[11px] font-bold text-slate-400 block">감지 탄착점 평균</span>
             <span className="text-2xl font-black text-red-600 dark:text-amber-400">
               {stats.averageScore.toFixed(2)}
             </span>
@@ -166,7 +168,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
             <h4 className="text-xs font-black text-cyan-900 dark:text-cyan-300 flex flex-wrap items-center gap-1.5">
               <span>영점 클릭 수정 가이드</span>
               <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-                (이미지 핀 평균 · 가상 제외: X {stats.mpiX_mm >= 0 ? `+${stats.mpiX_mm}` : stats.mpiX_mm}mm, Y {stats.mpiY_mm >= 0 ? `+${stats.mpiY_mm}` : stats.mpiY_mm}mm)
+                (감지 핀 평균 · 추정 핀 제외: X {stats.mpiX_mm >= 0 ? `+${stats.mpiX_mm}` : stats.mpiX_mm}mm, Y {stats.mpiY_mm >= 0 ? `+${stats.mpiY_mm}` : stats.mpiY_mm}mm)
               </span>
             </h4>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mt-2 text-xs font-bold text-slate-700 dark:text-slate-200">

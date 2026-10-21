@@ -414,7 +414,7 @@ export async function processTargetImage(
     normalizedImageUrl: canvas.toDataURL('image/jpeg', 0.95),
     warnings: knownShots?.length ? [] : [
       ...(analysisMetadata ? [`원본 ${analysisMetadata.sourceWidth}×${analysisMetadata.sourceHeight}px에서 ${analysisMetadata.roiWidth}×${analysisMetadata.roiHeight}px 영역을 원본 배율, 2px 간격으로 재분석했습니다.`] : []),
-      '감지는 독립된 원형 구멍, 추정은 겹친 경계의 원호로 찾은 중심입니다. 추정은 실제 탄착 위치를 보장하지 않습니다. 미확정에는 자동 좌표나 점수를 부여하지 않습니다. 영역의 추가 발수와 확인 점수는 별도로 기록할 수 있습니다.',
+      '감지는 이미지에서 찾은 탄착점, 추정은 부족한 발수를 겹친 영역에 배치한 핀입니다.',
       ...(targetType === 'blank' ? ['백지 표적은 실제 길이 기준을 알 수 없어 mm와 점수에 임시 배율을 사용합니다.'] : []),
     ],
   };
